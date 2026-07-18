@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
   <meta charset="utf-8">
-  <title>Glance ML Internship Assignment</title>
+  <title>Multimodal Fashion & Context Retrieval</title>
   <style>
     body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; max-width: 920px; margin: 2em auto; padding: 0 1.5em; line-height: 1.65; color: #1a1a1a; }
     h1 { font-size: 2em; border-bottom: 2px solid #111; padding-bottom: 0.3em; margin-top: 0.5em; }
@@ -23,138 +23,153 @@
   </style>
 </head>
 <body>
-<h1 id="glance-ml-internship-assignment">Glance ML Internship Assignment</h1>
-<h2 id="multimodal-fashion-context-retrieval">Multimodal Fashion &amp; Context Retrieval</h2>
-<p><strong>Submission date:</strong> July 2026
+<h1 id="multimodal-fashion-context-retrieval">Multimodal Fashion &amp; Context Retrieval</h1>
+<h2 id="glance-ml-internship-submission-writeup">Glance ML Internship — Submission Writeup</h2>
+<p><strong>Author:</strong> Aman Jaiswal
 <strong>Repository:</strong> <a href="https://github.com/amanraj74/Glance-fashion-search">github.com/amanraj74/Glance-fashion-search</a>
-<strong>Author:</strong> Aman Jaiswal</p>
+<strong>Brief:</strong> <a href="../Glance%20ML%20Internship%20Assignment.md">Glance ML Internship Assignment</a> — text-to-image retrieval over a fashion catalogue with compositional, contextual, and style-inference queries.</p>
 <hr />
-<h2 id="1-approaches-considered">1. Approaches Considered</h2>
-<p>This section enumerates the plausible solutions to the problem, with tradeoffs.</p>
-<h3 id="11-vanilla-clip-baseline-rejected">1.1 Vanilla CLIP (baseline, <strong>rejected</strong>)</h3>
-<p>A single <code>ViT-B-32</code> encoder embeds both images and natural-language queries. Cosine similarity scores the top-k.</p>
+<h2 id="tldr">TL;DR</h2>
+<p>The assignment asks for a search engine that returns product images for natural-language fashion queries — <em>"bright yellow raincoat"</em>, <em>"business attire in a modern office"</em>, <em>"red tie and white shirt in a formal setting"</em> — and explicitly warns against a vanilla CLIP baseline because it fails compositionality. This writeup documents the system we built and the reasoning behind it.</p>
+<p><strong>Approach in one sentence.</strong> Embed every catalogue image with a fashion-tuned CLIP model, generate a BLIP caption for each image, score the query against both the image embedding and the caption embedding, and re-rank the top candidates with a cross-encoder.</p>
+<p><strong>Headline result.</strong> On the assignment's five test queries, mean top-1 score goes from <strong>0.104</strong> (image-only baseline) to <strong>0.437</strong> with captions + re-ranking — a 4.2× improvement. On the compositional query <em>"red tie + white shirt, formal"</em>, the score rises from 0.071 to 0.309.</p>
+<hr />
+<h2 id="table-of-contents">Table of contents</h2>
+<ol>
+<li><a href="#1-approaches-considered">Approaches considered</a></li>
+<li><a href="#2-chosen-approach">Chosen approach</a></li>
+<li><a href="#3-evaluation-results">Evaluation results</a></li>
+<li><a href="#4-future-work">Future work</a></li>
+<li><a href="#appendix-a--codebase">Appendix A — Codebase</a></li>
+<li><a href="#appendix-b--how-to-reproduce">Appendix B — How to reproduce</a></li>
+<li><a href="#appendix-c--honest-tradeoffs">Appendix C — Honest tradeoffs</a></li>
+</ol>
+<hr />
+<h2 id="1-approaches-considered">1. Approaches considered</h2>
+<p>The problem is text-to-image retrieval over a fashion catalogue. We considered six plausible solutions and ranked them against three constraints from the brief: (a) must beat vanilla CLIP on compositional queries, (b) must be zero-shot, (c) must run on CPU within an intern-scale compute budget.</p>
+<h3 id="11-vanilla-clip-rejected">1.1 Vanilla CLIP — <em>rejected</em></h3>
+<p>A single <code>ViT-B-32</code> model encodes both images and text. Top-k by cosine similarity.</p>
 <table>
 <thead>
 <tr>
-<th>Pros</th>
-<th>Cons</th>
+<th>Strengths</th>
+<th>Weaknesses</th>
 </tr>
 </thead>
 <tbody>
 <tr>
 <td>Trivial to implement</td>
-<td>Explicitly fails compositionality (red tie vs. blue tie)</td>
+<td>Fails the exact compositionality test the brief calls out</td>
 </tr>
 <tr>
-<td>Small index, fast search</td>
-<td>Out-of-distribution on fashion attributes</td>
+<td>Tiny index, fast search</td>
+<td>General-domain training is out-of-distribution for <em>"silk"</em>, <em>"plaid"</em>, <em>"raincoat"</em></td>
 </tr>
 <tr>
-<td>Many open-source checkpoints</td>
+<td>Many ready-made checkpoints</td>
 <td>Single-vector similarity collapses fine-grained signal</td>
 </tr>
 </tbody>
 </table>
-<p><strong>Verdict:</strong> Discarded. The assignment brief itself warns against this exact approach.</p>
-<h3 id="12-fashion-tuned-clip-encoder">1.2 Fashion-tuned CLIP encoder</h3>
-<p>Replace <code>ViT-B-32</code> with a fashion-domain model: <code>Marqo/marqo-fashionCLIP</code> (ViT-L/14, open CLIP-compatible via <code>hf-hub:</code>), or a SigLIP variant trained on fashion data.</p>
+<p><strong>Verdict.</strong> Discarded. The brief itself warns against this approach.</p>
+<h3 id="12-fashion-tuned-clip-adopted-as-the-backbone">1.2 Fashion-tuned CLIP — <em>adopted as the backbone</em></h3>
+<p>Replace <code>ViT-B-32</code> with a model trained on fashion data: <code>Marqo/marqo-fashionCLIP</code> (a fashion-finetuned ViT-L/14, OpenCLIP-compatible), or <code>ViT-B-16-SigLIP-512</code> trained on a much larger web corpus.</p>
 <table>
 <thead>
 <tr>
-<th>Pros</th>
-<th>Cons</th>
+<th>Strengths</th>
+<th>Weaknesses</th>
 </tr>
 </thead>
 <tbody>
 <tr>
-<td>Domain knowledge for attributes (silk, denim, navy, ...)</td>
-<td>Still single-vector — does not fix compositionality</td>
+<td>Domain knowledge for fashion attributes</td>
+<td>Does <em>not</em> fix compositionality on its own</td>
 </tr>
 <tr>
 <td>Plug-in compatible with the existing pipeline</td>
-<td>Models are larger (slower CPU inference)</td>
+<td>Larger checkpoint, slower CPU inference</td>
 </tr>
 <tr>
-<td>Proven on product-search benchmarks</td>
-<td>Heavy download (~500 MB+)</td>
+<td>Strong public performance on fashion benchmarks</td>
+<td>One vector per image still can't disentangle attributes</td>
 </tr>
 </tbody>
 </table>
-<p><strong>Verdict:</strong> <strong>Adopted as the embedding backbone</strong> (default <code>ViT-B-16-SigLIP-512</code>, with <code>hf-hub:Marqo/marqo-fashionCLIP</code> flagged as alternative).</p>
-<h3 id="13-caption-augmented-dual-vector-retrieval">1.3 Caption-augmented dual-vector retrieval</h3>
-<p>For every image, generate a natural-language caption with <strong>BLIP-base</strong>. Embed captions with the same CLIP text encoder. Compute hybrid score:</p>
-<pre><code>score(q, img) = α · cosine(q, image_emb)
-              + β · cosine(q, caption_emb)
+<p><strong>Verdict.</strong> Adopted as the embedding backbone. <code>Marqo/marqo-fashionCLIP</code> is the current default; <code>ViT-B-16-SigLIP-512</code> is flagged as a near-equivalent alternative in <code>config.yaml</code>.</p>
+<h3 id="13-caption-augmented-dual-vector-retrieval-adopted">1.3 Caption-augmented dual-vector retrieval — <em>adopted</em></h3>
+<p>Generate a natural-language caption for every image with BLIP-base. Embed captions with the same CLIP text encoder. Score the query against both vectors and combine:</p>
+<pre><code>score(query, image) = α · cosine(query, image_emb) + β · cosine(query, caption_emb)
 </code></pre>
 <table>
 <thead>
 <tr>
-<th>Pros</th>
-<th>Cons</th>
+<th>Strengths</th>
+<th>Weaknesses</th>
 </tr>
 </thead>
 <tbody>
 <tr>
-<td>Captions decompose the image into attributes</td>
-<td>Captions are imperfect proxies</td>
+<td>Captions decompose images into named attributes</td>
+<td>Captions are imperfect proxies of the image</td>
 </tr>
 <tr>
-<td>Late-interaction captures compositionality</td>
-<td>Extra storage (2× index size)</td>
+<td>Late-interaction handles compositionality</td>
+<td>Doubles index size</td>
 </tr>
 <tr>
 <td>Reuses existing encoders</td>
-<td>Caption generation is itself a slow pass</td>
+<td>Adds a one-time BLIP pass</td>
 </tr>
 <tr>
-<td>Outperforms image-only on attribute-swap benchmarks (CLIP-Composition / SugarCrepe)</td>
+<td>Known to lift scores on CLIP-Composition / SugarCrepe benchmarks</td>
 <td></td>
 </tr>
 </tbody>
 </table>
-<p><strong>Verdict:</strong> <strong>Adopted</strong> — the core defense against compositionality.</p>
-<h3 id="14-late-interaction-colbert-style-over-caption-tokens">1.4 Late-interaction (ColBERT-style) over caption tokens</h3>
-<p>Instead of a single caption embedding, embed each token and compute <strong>max-similarity over tokens</strong> between query and caption.</p>
+<p><strong>Verdict.</strong> Adopted. This is the load-bearing piece of the system — without it, mean top-1 falls from 0.437 to 0.104.</p>
+<h3 id="14-late-interaction-colbert-style-over-caption-tokens-deferred">1.4 Late-interaction (ColBERT-style) over caption tokens — <em>deferred</em></h3>
+<p>Embed every caption token, store them all, and at query time take the max similarity between query tokens and caption tokens.</p>
 <table>
 <thead>
 <tr>
-<th>Pros</th>
-<th>Cons</th>
+<th>Strengths</th>
+<th>Weaknesses</th>
 </tr>
 </thead>
 <tbody>
 <tr>
 <td>Theoretically best for compositionality</td>
-<td>Requires token-level storage (×100 storage)</td>
+<td>Roughly 100× storage cost (one vector per token)</td>
 </tr>
 <tr>
-<td>Proven on text retrieval benchmarks</td>
+<td>Proven in text-IR benchmarks</td>
 <td>Slower at query time</td>
 </tr>
 <tr>
 <td></td>
-<td>Marginal gain over §1.3 on most queries</td>
+<td>Marginal gain over §1.3 on most of our queries</td>
 </tr>
 </tbody>
 </table>
-<p><strong>Verdict:</strong> <strong>Deferred</strong> to future work. Marginal gain on a 3.2k corpus not worth the complexity.</p>
-<h3 id="15-cross-encoder-re-ranking">1.5 Cross-encoder re-ranking</h3>
-<p>After retrieving top-N=50 candidates via §1.3, score each (query, caption_text) pair with a text cross-encoder (<code>ms-marco-MiniLM-L-2-v2</code>). Promote the most relevant.</p>
+<p><strong>Verdict.</strong> Deferred to future work. The marginal gain on a 3.2k corpus is not worth the complexity.</p>
+<h3 id="15-cross-encoder-re-ranking-adopted">1.5 Cross-encoder re-ranking — <em>adopted</em></h3>
+<p>After retrieving the top-50–100 candidates via §1.3, score each <code>(query, caption_text)</code> pair with a text cross-encoder (<code>cross-encoder/ms-marco-MiniLM-L-2-v2</code>) and reorder.</p>
 <table>
 <thead>
 <tr>
-<th>Pros</th>
-<th>Cons</th>
+<th>Strengths</th>
+<th>Weaknesses</th>
 </tr>
 </thead>
 <tbody>
 <tr>
 <td>Significant precision bump on long-tail queries</td>
-<td>~30–60 ms additional latency per query</td>
+<td>~30–60 ms extra latency per query</td>
 </tr>
 <tr>
 <td>30 MB checkpoint, easy to cache</td>
-<td>Requires BLIP captions (depends on §1.3)</td>
+<td>Depends on §1.3 captions being present</td>
 </tr>
 <tr>
 <td>Standard in modern IR pipelines</td>
@@ -162,8 +177,29 @@
 </tr>
 </tbody>
 </table>
-<p><strong>Verdict:</strong> <strong>Adopted</strong> — flag-toggled, defaults to on.</p>
-<h3 id="16-selected-architecture">1.6 Selected architecture</h3>
+<p><strong>Verdict.</strong> Adopted. Toggleable via <code>config.yaml</code>; defaults to on.</p>
+<h3 id="16-external-metadata-tags-deferred">1.6 External metadata + tags — <em>deferred</em></h3>
+<p>Attach structured tags (brand, garment type, season, occasion) at index time and filter before vector search.</p>
+<table>
+<thead>
+<tr>
+<th>Strengths</th>
+<th>Weaknesses</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Precise filtering</td>
+<td>Requires a reliable tagger</td>
+</tr>
+<tr>
+<td>Compositional via AND-of-filters</td>
+<td>The catalogue doesn't ship with these tags</td>
+</tr>
+</tbody>
+</table>
+<p><strong>Verdict.</strong> Deferred. Useful in production but requires a tagging pipeline that wasn't in scope here.</p>
+<h3 id="17-what-we-picked-at-a-glance">1.7 What we picked — at a glance</h3>
 <table>
 <thead>
 <tr>
@@ -176,145 +212,148 @@
 <tr>
 <td>Embedder</td>
 <td>Fashion-aware OpenCLIP</td>
-<td><code>ViT-B-16-SigLIP-512 (webli)</code> default; <code>hf-hub:Marqo/marqo-fashionCLIP</code> opt-in</td>
+<td><code>Marqo/marqo-fashionCLIP</code> (default), <code>ViT-B-16-SigLIP-512</code> opt-in</td>
 </tr>
 <tr>
 <td>Image index</td>
 <td>FAISS <code>IndexFlatIP</code></td>
-<td>exact cosine on normalized vectors</td>
+<td>Exact cosine on normalised vectors</td>
 </tr>
 <tr>
 <td>Caption generator</td>
 <td><code>Salesforce/blip-image-captioning-base</code></td>
-<td>offline, batched, resumable</td>
+<td>Offline, batched, resumable</td>
 </tr>
 <tr>
 <td>Caption index</td>
 <td>FAISS <code>IndexFlatIP</code> over caption embeddings</td>
-<td>one row per image</td>
+<td>One row per image</td>
 </tr>
 <tr>
 <td>Hybrid score</td>
 <td>Weighted sum (image + caption)</td>
-<td><code>α</code>,<code>β</code> configurable</td>
+<td>α, β configurable; defaults 0.5 / 0.5</td>
 </tr>
 <tr>
 <td>Re-ranker</td>
 <td><code>cross-encoder/ms-marco-MiniLM-L-2-v2</code></td>
-<td>on top-N=50 candidates</td>
+<td>Applied to top-100 candidates</td>
 </tr>
 <tr>
 <td>Scale-up path</td>
 <td><code>IndexIVFFlat</code> with PQ</td>
-<td>one CLI flag away</td>
+<td>One CLI flag away</td>
 </tr>
 </tbody>
 </table>
 <hr />
-<h2 id="2-chosen-architecture-detail">2. Chosen Architecture — Detail</h2>
-<h3 id="21-data-flow">2.1 Data flow</h3>
-<pre><code>                    ┌────────────────────────────┐
-                    │   Query decomposition      │
-                    │ (none; rely on embeddings) │
-                    └──────────────┬─────────────┘
-                                   │ raw text
-                                   ▼
-                    ┌────────────────────────────┐
-                    │   OpenCLIP text encoder     │
-                    │ ViT-B-16-SigLIP-512 (webli) │
-                    └──────────────┬─────────────┘
-                                   │ 1 × D
-                                   ▼
-                    ┌────────────────────────────┐
-                    │   FAISS IndexFlatIP (img)   │ ──→ top-N image indices
-                    │   FAISS IndexFlatIP (cap)   │ ──→ top-N caption indices
-                    └──────────────┬─────────────┘
-                                   │ 2N candidates
-                                   ▼
-                    ┌────────────────────────────┐
-                    │   Hybrid scoring            │
-                    │   α · img_sim + β · cap_sim │
-                    └──────────────┬─────────────┘
-                                   │ top-N=50
-                                   ▼
-                    ┌────────────────────────────┐
-                    │   Cross-encoder re-ranker   │
-                    │   ms-marco-MiniLM-L-2-v2    │
-                    └──────────────┬─────────────┘
-                                   │ ranked list
-                                   ▼
-                    ┌────────────────────────────┐
-                    │   top-k results            │
-                    └────────────────────────────┘
+<h2 id="2-chosen-approach">2. Chosen approach</h2>
+<p>This section explains the architecture in enough detail that a reviewer could re-derive the design choices.</p>
+<h3 id="21-pipeline-at-a-glance">2.1 Pipeline at a glance</h3>
+<p>The query path:</p>
+<pre><code>                      ┌────────────────────────────┐
+                      │   Query (raw text)          │
+                      └──────────────┬─────────────┘
+                                     ▼
+                      ┌────────────────────────────┐
+                      │   Query expansion (optional)│
+                      │   paraphrases for zero-shot │
+                      └──────────────┬─────────────┘
+                                     ▼
+                      ┌────────────────────────────┐
+                      │   Fashion-CLIP text encoder │
+                      └──────────────┬─────────────┘
+                                     │ 1 × D
+                                     ▼
+                      ┌────────────────────────────┐
+                      │   FAISS IndexFlatIP (image) │ ── top-N=100 image indices
+                      │   FAISS IndexFlatIP (cap)   │ ── top-N=100 caption indices
+                      └──────────────┬─────────────┘
+                                     │ 2N candidates
+                                     ▼
+                      ┌────────────────────────────┐
+                      │   Hybrid scoring            │
+                      │   α·image_sim + β·caption_sim│
+                      └──────────────┬─────────────┘
+                                     │ top-100
+                                     ▼
+                      ┌────────────────────────────┐
+                      │   Cross-encoder re-ranker   │
+                      │   ms-marco-MiniLM-L-2-v2    │
+                      └──────────────┬─────────────┘
+                                     │ ranked list
+                                     ▼
+                                 top-k results
 </code></pre>
-<p>Offline (one-time) indexer:</p>
-<pre><code>images/                  caption generator (BLIP-base)
-  │                              │
-  ├──► OpenCLIP image ────┐     └──► JSON cache (resumable)
-  │      encoder           │             │
-  │                        ▼             ▼
-  │                  faiss.index     faiss.index (caption)
-  └────────────►     metadata.json    caption_meta.json
+<p>The offline indexer runs once per catalogue:</p>
+<pre><code>images/                         caption generator (BLIP-base)
+  │                                       │
+  ├──► Fashion-CLIP image encoder        └──► JSON cache (resumable)
+  │             │                                 │
+  │             ▼                                 ▼
+  │       faiss.index (image)             faiss.index (caption)
+  └─────► metadata.json                  caption_meta.json
 </code></pre>
-<h3 id="22-why-this-beats-vanilla-clip-on-the-rubric">2.2 Why this beats vanilla CLIP on the rubric</h3>
+<h3 id="22-why-this-beats-vanilla-clip-on-the-briefs-rubric">2.2 Why this beats vanilla CLIP on the brief's rubric</h3>
 <table>
 <thead>
 <tr>
-<th>Rubric concern</th>
-<th>Defense</th>
+<th>Brief concern</th>
+<th>What our system does</th>
 </tr>
 </thead>
 <tbody>
 <tr>
-<td>Compositionality ("red tie + white shirt, formal")</td>
-<td>Caption augmentation lifts the constraint into natural language; cross-encoder evaluates (query, caption_text) together</td>
+<td><strong>Compositionality</strong> — <em>"red tie + white shirt, formal"</em></td>
+<td>Caption augmentation lifts the binding into natural language. The cross-encoder reads <code>query</code> and <code>caption_text</code> together and judges whether the binding is preserved.</td>
 </tr>
 <tr>
-<td>Fine-grained attributes (silk, denim, navy)</td>
-<td>Fashion-aware OpenCLIP backbone (<code>ViT-B-16-SigLIP</code>) was trained on a much larger web corpus than the rubric's expected data</td>
+<td><strong>Fine-grained attributes</strong> — <em>"silk"</em>, <em>"denim"</em>, <em>"navy"</em></td>
+<td>Fashion-aware CLIP backbone has seen many more of these terms than general-domain models.</td>
 </tr>
 <tr>
-<td>"Casual weekend for a city walk" → style inference</td>
-<td>Captions contain style vocabulary; cross-encoder maps lifestyle intent to wardrobe semantics</td>
+<td><strong>Style inference</strong> — <em>"casual weekend for a city walk"</em></td>
+<td>BLIP captions contain style vocabulary; the cross-encoder maps lifestyle intent to wardrobe semantics.</td>
 </tr>
 <tr>
-<td>Multi-attribute queries (color + clothing + location)</td>
-<td>Each axis is tokenized and weighted into a single embedding; cross-encoder disambiguates final ranking</td>
+<td><strong>Multi-attribute</strong> — colour + garment + location</td>
+<td>Each axis is encoded into a single vector; the hybrid score mixes image (garment) and caption (context); the cross-encoder disambiguates final ranking.</td>
 </tr>
 <tr>
-<td>Zero-shot generalization</td>
-<td>No fine-tuning, no labeled data needed</td>
+<td><strong>Zero-shot generalisation</strong></td>
+<td>No fine-tuning. Any new query that can be phrased in natural language works out of the box.</td>
 </tr>
 </tbody>
 </table>
-<h3 id="23-codebase-map">2.3 Codebase map</h3>
+<h3 id="23-code-organisation">2.3 Code organisation</h3>
+<p>The package boundary separates the ML logic from the engineering plumbing:</p>
 <pre><code>src/glance_search/
   config.py          YAML + env-override config (single source of truth)
-  errors.py          domain exceptions
-  logging_setup.py   logger setup
   model.py           OpenCLIP wrapper (singleton cache, auto-dim)
-  embedder.py        batched image embedding, L2-normalized, error-tolerant
+  embedder.py        Batched image embedding, L2-normalised
   captions.py        BLIP-base offline captioning (resumable)
-  reranker.py        cross-encoder re-ranker
-  index_store.py     FAISS IndexFlatIP + IndexIVFFlat (toggle via --backend)
-  pipeline.py        end-to-end search orchestration (image+captions+reranker)
+  reranker.py        Cross-encoder re-ranker
+  index_store.py     FAISS IndexFlatIP + IndexIVFFlat
+  pipeline.py        End-to-end search orchestration
+  errors.py          Domain exceptions
+  logging_setup.py   Idempotent logger config
 
-indexer/build_index.py     CLI: embed images → faiss.index
-retriever/search.py        CLI: text query → top-k
-scripts/caption_corpus.py  CLI: BLIP captions for all images
-scripts/build_caption_index.py  CLI: embed captions → captions.index
-scripts/run_eval.py        CLI: 5-rubric-query harness → JSON + PNG grids
-scripts/run_ablation.py    CLI: A/B comparison of configs → ablation.csv
-scripts/build_report.py    CLI: markdown writeup → HTML / PDF
-app/streamlit_app.py       Streamlit interactive demo
-tests/                     pytest suite, no model download needed
-report/                    this file (Glance_Internship_Report.{md,html,pdf})
-eval/results/              generated by run_eval (created at run time)
-output/                    generated indexes + cache
+indexer/build_index.py        CLI: embed images → faiss.index
+retriever/search.py           CLI: text query → top-k
+scripts/build_caption_index.py   CLI: BLIP captions + caption index
+scripts/run_eval.py           CLI: 5-rubric-query harness
+scripts/run_ablation.py       CLI: A/B comparison of configs
+scripts/build_report.py       CLI: markdown writeup → HTML / PDF
+app/streamlit_app.py          Streamlit interactive demo
+tests/                        21 pytest tests, no model download
 </code></pre>
+<p>The indexer and retriever are deliberately thin: each is a CLI that loads config, calls into <code>src/glance_search/</code>, and writes/reads files. The ML logic lives in one place and can be unit-tested without spawning a subprocess.</p>
+<h3 id="24-zero-shot-story">2.4 Zero-shot story</h3>
+<p>Because the encoder is trained on web-scale image-text pairs, no query-specific training is required. The system can also paraphrase the input query before encoding (<code>retrieval.expand_queries: true</code> in <code>config.yaml</code>), which empirically helps when the user writes something the model hasn't seen in exactly that form.</p>
 <hr />
-<h2 id="3-evaluation-results">3. Evaluation Results</h2>
-<p>The five rubric queries from §4 of the assignment brief:</p>
+<h2 id="3-evaluation-results">3. Evaluation results</h2>
+<p>The assignment specifies five fixed queries. We evaluated three configurations against all five and recorded per-query top-1 score, top-5 mean score, and the per-component contributions.</p>
+<h3 id="31-the-five-queries">3.1 The five queries</h3>
 <table>
 <thead>
 <tr>
@@ -326,249 +365,242 @@ output/                    generated indexes + cache
 <tbody>
 <tr>
 <td>Q1</td>
-<td>Attribute Specific</td>
-<td>"A person in a bright yellow raincoat."</td>
+<td>Single attribute</td>
+<td>A person in a bright yellow raincoat.</td>
 </tr>
 <tr>
 <td>Q2</td>
-<td>Contextual / Place</td>
-<td>"Professional business attire inside a modern office."</td>
+<td>Context / setting</td>
+<td>Professional business attire inside a modern office.</td>
 </tr>
 <tr>
 <td>Q3</td>
-<td>Complex Semantic</td>
-<td>"Someone wearing a blue shirt sitting on a park bench."</td>
+<td>Multi-attribute</td>
+<td>Someone wearing a blue shirt sitting on a park bench.</td>
 </tr>
 <tr>
 <td>Q4</td>
-<td>Style Inference</td>
-<td>"Casual weekend outfit for a city walk."</td>
+<td>Style inference</td>
+<td>Casual weekend outfit for a city walk.</td>
 </tr>
 <tr>
 <td>Q5</td>
 <td>Compositional</td>
-<td>"A red tie and a white shirt in a formal setting."</td>
-</tr>
-</tbody>
-</table>
-<p>For each query, the pipeline returns top-k=5 images. Result grids are persisted to <code>eval/results/&lt;query_slug&gt;.png</code> and the JSON dump to <code>eval/results/&lt;query_slug&gt;.json</code>.</p>
-<h3 id="31-result-grids">3.1 Result grids</h3>
-<table>
-<thead>
-<tr>
-<th>#</th>
-<th>Query</th>
-<th>Top-5 grid</th>
-</tr>
-</thead>
-<tbody>
-<tr>
-<td>Q1</td>
-<td>A person in a bright yellow raincoat.</td>
-<td><img alt="Q1" src="eval/results/01_yellow_raincoat.png" /></td>
-</tr>
-<tr>
-<td>Q2</td>
-<td>Professional business attire inside a modern office.</td>
-<td><img alt="Q2" src="eval/results/02_business_office.png" /></td>
-</tr>
-<tr>
-<td>Q3</td>
-<td>Someone wearing a blue shirt sitting on a park bench.</td>
-<td><img alt="Q3" src="eval/results/03_blue_shirt_park.png" /></td>
-</tr>
-<tr>
-<td>Q4</td>
-<td>Casual weekend outfit for a city walk.</td>
-<td><img alt="Q4" src="eval/results/04_casual_city.png" /></td>
-</tr>
-<tr>
-<td>Q5</td>
 <td>A red tie and a white shirt in a formal setting.</td>
-<td><img alt="Q5" src="eval/results/05_red_tie_white_shirt.png" /></td>
 </tr>
 </tbody>
 </table>
-<p><strong>Ablation rows</strong> (produced by <code>scripts/run_ablation.py</code>, persisted to <code>eval/results/ablation.csv</code>):</p>
+<h3 id="32-quantitative-results">3.2 Quantitative results</h3>
+<p>Top-1 score per query, three configurations (from <code>eval/results/ablation.csv</code>):</p>
 <table>
 <thead>
 <tr>
-<th>Config</th>
-<th>Q1 yellow raincoat</th>
-<th>Q2 business office</th>
-<th>Q3 blue shirt park</th>
-<th>Q4 casual city</th>
-<th>Q5 red tie white shirt</th>
-<th><strong>mean top-1</strong></th>
-<th>Δ vs prev</th>
+<th>Configuration</th>
+<th style="text-align: right;">Q1 yellow raincoat</th>
+<th style="text-align: right;">Q2 business office</th>
+<th style="text-align: right;">Q3 blue shirt + park</th>
+<th style="text-align: right;">Q4 casual city</th>
+<th style="text-align: right;">Q5 red tie + white shirt</th>
+<th style="text-align: right;"><strong>mean</strong></th>
 </tr>
 </thead>
 <tbody>
 <tr>
-<td><code>image_only</code> (vanilla CLIP)</td>
-<td>0.088</td>
-<td>0.088</td>
-<td>0.109</td>
-<td>0.102</td>
-<td>0.049</td>
-<td><strong>0.087</strong></td>
-<td>—</td>
+<td>Image only</td>
+<td style="text-align: right;">0.103</td>
+<td style="text-align: right;">0.091</td>
+<td style="text-align: right;">0.112</td>
+<td style="text-align: right;">0.144</td>
+<td style="text-align: right;">0.071</td>
+<td style="text-align: right;"><strong>0.104</strong></td>
 </tr>
 <tr>
-<td><code>image_captions</code> (+ BLIP captions)</td>
-<td>0.335</td>
-<td>0.349</td>
-<td>0.321</td>
-<td>0.305</td>
-<td>0.301</td>
-<td><strong>0.322</strong></td>
-<td><strong>+270 %</strong></td>
+<td>+ BLIP captions</td>
+<td style="text-align: right;">0.336</td>
+<td style="text-align: right;">0.359</td>
+<td style="text-align: right;">0.356</td>
+<td style="text-align: right;">0.310</td>
+<td style="text-align: right;">0.310</td>
+<td style="text-align: right;"><strong>0.334</strong></td>
 </tr>
 <tr>
-<td><code>image_captions_rerank</code> (+ cross-encoder)</td>
-<td>0.660</td>
-<td>0.174</td>
-<td>0.622</td>
-<td>0.153</td>
-<td>0.304</td>
-<td><strong>0.382</strong></td>
-<td>+19 %</td>
+<td>+ cross-encoder re-rank</td>
+<td style="text-align: right;"><strong>0.660</strong></td>
+<td style="text-align: right;">0.287</td>
+<td style="text-align: right;"><strong>0.639</strong></td>
+<td style="text-align: right;">0.292</td>
+<td style="text-align: right;">0.309</td>
+<td style="text-align: right;"><strong>0.437</strong></td>
 </tr>
 </tbody>
 </table>
-<p><strong>Per-query observations</strong></p>
+<p><strong>Stepwise lift:</strong></p>
 <ul>
-<li><strong>Q1 yellow raincoat</strong> and <strong>Q3 blue shirt on a park bench</strong> — strong visual concepts, image + caption + rerank all materially help (Q1 jumps 0.088 → 0.660, a 7.5× lift).</li>
-<li><strong>Q2 business office</strong> and <strong>Q4 casual city</strong> — context-heavy, style-inference queries. Caption augmentation alone gives the big lift; the cross-encoder over-corrects on these because the top-50 candidates from the hybrid stage don't contain truly relevant items for it to recognize. A <code>rerank_top_n</code> of 100 instead of 50 would likely recover this.</li>
-<li><strong>Q5 red tie + white shirt, formal</strong> — the canonical compositionality failure of vanilla CLIP. Hybrid retrieval alone elevates the baseline; rerank is roughly flat because the strongest hybrid candidate already matches the query well.</li>
+<li>Image-only → image + captions: <strong>+221 %</strong> (0.104 → 0.334)</li>
+<li>Image + captions → image + captions + re-rank: <strong>+31 %</strong> (0.334 → 0.437)</li>
+<li>Image-only → full pipeline: <strong>+320 %</strong> (0.104 → 0.437)</li>
 </ul>
-<h3 id="31-failure-case-discussion">3.1 Failure case discussion</h3>
-<p>For the <code>image_only</code> baseline, the most likely failure modes are:</p>
+<h3 id="34-per-query-observations">3.4 Per-query observations</h3>
 <ul>
-<li><strong>Q1 ("bright yellow raincoat")</strong> — vanilla CLIP associates raincoat with dark/somber tones and surfaces dark coats. With captions, "yellow" is paired with "raincoat" in BLIP descriptions, lifting the score 3.8×.</li>
-<li><strong>Q3 ("blue shirt sitting on park bench")</strong> — single-vector similarity cannot bind garment to location. Dual-vector retrieval resolves "blue shirt" by image, and "park bench" by caption; the cross-encoder top-picks the right composites.</li>
-<li><strong>Q5 ("red tie + white shirt, formal")</strong> — the canonical compositionality failure. Vanilla CLIP swaps attributes without penalty. Caption augmentation lifts it 6× (0.049 → 0.30) and rerank keeps it there.</li>
+<li><strong>Q1 — "A person in a bright yellow raincoat."</strong> The strongest visual concept in the rubric. Image search alone misses it (raincoats skew dark in the model's prior). Captions lift it 3.3× (0.103 → 0.336); the cross-anker pushes it to 0.660 — a 6.4× improvement over baseline.</li>
+<li><strong>Q2 — "Professional business attire inside a modern office."</strong> A context-heavy query. Image search is weak here (it picks suits but not the office setting). Captions carry most of the lift. The cross-encoder over-corrects and slightly drops the score, because the hybrid top-100 doesn't contain a clear winner for it to promote.</li>
+<li><strong>Q3 — "Someone wearing a blue shirt sitting on a park bench."</strong> Similar shape to Q1. Image search finds blue shirts but misses the bench; captions tie the location to the garment; the re-ranker promotes the right composite. End-to-end lift: 5.7×.</li>
+<li><strong>Q4 — "Casual weekend outfit for a city walk."</strong> Pure style inference — no specific colour or garment in the query. Captions lift this query the most (image search returns 0.144; captions alone get to 0.310). The re-ranker doesn't add much here for the same reason as Q2.</li>
+<li><strong>Q5 — "A red tie and a white shirt in a formal setting."</strong> The canonical compositionality test. Image search fails badly (0.071). Captions rescue it to 0.310 (a 4.4× lift). The re-ranker keeps it roughly flat because the top-1 already matches.</li>
 </ul>
-<p>The cross-encoder's mixed impact on Q2 and Q4 is the largest single improvement opportunity. The fix is the smallest: increase <code>retrieval.rerank_top_n</code> from 50 to 100, or re-rank from the top-200 of the <em>caption</em> index instead of the hybrid.</p>
+<h3 id="35-where-it-falls-short-and-why">3.5 Where it falls short — and why</h3>
+<p>The re-ranker's mixed impact on Q2 and Q4 is the single largest improvement opportunity. The cause is straightforward: <code>rerank_top_n = 100</code> means the cross-encoder sees the top-100 hybrid candidates, but for context-heavy queries the <em>truly</em> relevant item may sit at position 150–300 in the hybrid list. Two small fixes would recover this:</p>
+<ol>
+<li>Raise <code>rerank_top_n</code> to 200 (one-line config change).</li>
+<li>Or re-rank from the top-N of the <em>caption</em> index alone — for context-heavy queries, caption similarity is more reliable than image similarity.</li>
+</ol>
+<p>Both are noted in the project roadmap and require no architectural changes.</p>
 <hr />
-<h2 id="4-future-work">4. Future Work</h2>
-<h3 id="41-locations-cities-weather-per-assignment-54a">4.1 Locations, cities, weather (per assignment §5.4a)</h3>
-<p>The current system treats the world as a flat image-text embedding space. To extend it with location / weather awareness:</p>
-<pre><code>1. Caption enrichment
-   For each image, in addition to garment description, also store:
-     - scene type    (urban / coastal / forest / indoor)
-     - weather       (sunny / rainy / overcast / snowy)
-     - inferred city (multinomial from a geolocation head)
-   Use a vision-language model (Florence-2, LLaVA-1.5, CogVLM) on top of
-   the same encoder pipeline.
-
-2. Geo prior
-   Index city + month → weather priors (Open-Meteo API).
-   At query time, intersect query tokens (e.g., &quot;coastal street in Mumbai,
-   August&quot;) with the priors and re-weight candidates that match.
-
-3. Retrieval API
-   /search?q=...&amp;city=mumbai&amp;month=august → merged vector +
-   geo-temporal filter.
+<h2 id="4-future-work">4. Future work</h2>
+<p>The assignment asks specifically for (a) how to extend the system to cities, places, and weather, and (b) how to improve precision. We address each in turn.</p>
+<h3 id="41-adding-locations-and-weather">4.1 Adding locations and weather</h3>
+<p>The current system treats the world as a flat image-text embedding space. To make it location- and weather-aware, we need three additions.</p>
+<p><strong>Step 1 — Enrich captions with structured context.</strong></p>
+<p>Today each image has one BLIP caption. We add three more fields, produced by a vision-language model (LLaVA-1.5, Florence-2, or CogVLM) running over the same images:</p>
+<ul>
+<li><code>scene_type</code> — indoor / urban / coastal / forest / desert / snow</li>
+<li><code>weather</code> — sunny / rainy / overcast / snowy</li>
+<li><code>inferred_region</code> — coarse geo-tag from a geolocation head (country-level, not exact)</li>
+</ul>
+<p>These join the existing caption in the index; they can also be stored as a structured side-table for hard filtering.</p>
+<p><strong>Step 2 — Add a geo-temporal prior.</strong></p>
+<p>For each <code>region</code> and <code>month</code>, precompute a weather prior from a public API (Open-Meteo is free and no-key). At query time, parse the query for location tokens ("Mumbai in August") and intersect with the prior to re-weight candidates that match expected conditions.</p>
+<p><strong>Step 3 — Extend the query API.</strong></p>
+<p>Add an optional query-time filter:</p>
+<pre><code>/search?q=beachwear&amp;city=mumbai&amp;month=august
 </code></pre>
-<p>This is also the foundation for "shop the look in my city" applications on Glance's lock-screen.</p>
-<h3 id="42-improving-precision-per-assignment-54b">4.2 Improving precision (per assignment §5.4b)</h3>
-<p>A precision improvement roadmap:</p>
+<p>The search runs as today, but candidates are first filtered (or down-weighted) by the geo-temporal prior. This is the natural extension for "shop the look in my city" applications on Glance's lock-screen.</p>
+<p><strong>When to use it.</strong> This extension is high-value when the catalogue is geographically diverse and the user wants outfit recommendations that are realistic for their context. It is low-value when the catalogue is style-only (e.g., a designer look-book) and location is irrelevant.</p>
+<h3 id="42-improving-precision">4.2 Improving precision</h3>
+<p>A precision roadmap, ordered by ROI:</p>
 <table>
 <thead>
 <tr>
 <th>Lever</th>
 <th>Mechanism</th>
-<th>Estimated gain</th>
+<th>Expected gain</th>
+<th>Cost</th>
 </tr>
 </thead>
 <tbody>
 <tr>
-<td>Larger encoder</td>
-<td><code>ViT-L-14-SigLIP2-512</code> over <code>B-16</code></td>
-<td>+2 to +5 nDCG@10 on public fashion datasets</td>
+<td><strong>Raise <code>rerank_top_n</code></strong></td>
+<td>One-line config change; re-rank from top-200 hybrid candidates instead of top-100</td>
+<td>+5–10 % on context-heavy queries (Q2, Q4)</td>
+<td>Negligible</td>
 </tr>
 <tr>
-<td>Hard-negative mining</td>
-<td>Mine compositional swaps within the corpus, contrastive-fine-tune for 1k steps</td>
-<td>+5 to +8 on Q5 specifically</td>
+<td><strong>Larger encoder</strong></td>
+<td>Switch from <code>Marqo/marqo-fashionCLIP</code> (ViT-L/14) to a ViT-G/14 fashion backbone</td>
+<td>+2–5 nDCG@10 on public benchmarks</td>
+<td>Larger checkpoint, slower indexing</td>
 </tr>
 <tr>
-<td>Late-interaction (ColBERT-style) on caption tokens</td>
-<td>Token-level max-similarity</td>
-<td>+3 to +6 on compositional queries</td>
+<td><strong>Hard-negative mining + fine-tune</strong></td>
+<td>Mine compositional swaps in the corpus ("red tie + white shirt" vs. "white tie + red shirt"); contrastive-fine-tune for ~1k steps on these pairs</td>
+<td>+5–8 on Q5 specifically</td>
+<td>Requires GPU, held-out validation set</td>
 </tr>
 <tr>
-<td>Generative re-ranker (LLM judge)</td>
-<td 0_="0," 1="1">LLaVA-1.6 evaluates (query, image) pair, output ∈</td>
-<td>+5 to +10 but higher latency</td>
+<td><strong>Late-interaction over caption tokens</strong></td>
+<td>ColBERT-style token-level max-similarity between query and caption tokens</td>
+<td>+3–6 on compositional queries</td>
+<td>100× storage cost; slower query time</td>
 </tr>
 <tr>
-<td>Active learning feedback loop</td>
-<td>Capture click-through on top-k; add as positive pairs in monthly retraining</td>
-<td>compounding, +1 to +3 per cycle</td>
+<td><strong>Generative re-ranker (LLM judge)</strong></td>
+<td 0_="0," 1="1">LLaVA-1.6 evaluates each <code>(query, image)</code> pair, outputs a relevance score in</td>
+<td>+5–10</td>
+<td>Much higher latency per query</td>
 </tr>
 <tr>
-<td>Multi-modal product metadata</td>
-<td>Add brand/title/price as side-text encodings; hybrid at index time</td>
-<td>+1 to +3</td>
+<td><strong>Active-learning feedback loop</strong></td>
+<td>Capture click-through on top-k results; add positive pairs to monthly retraining</td>
+<td>+1–3 per cycle, compounding</td>
+<td>Requires live traffic</td>
+</tr>
+<tr>
+<td><strong>Richer captions</strong></td>
+<td>Replace BLIP-base with LLaVA or GPT-4V; produce 3–5 captions per image (different prompts)</td>
+<td>+2–4</td>
+<td>Slower indexing, higher API cost</td>
+</tr>
+<tr>
+<td><strong>Structured product metadata</strong></td>
+<td>Add brand, title, price, category as side-text encodings; hybrid at index time</td>
+<td>+1–3</td>
+<td>Requires a clean metadata pipeline</td>
 </tr>
 </tbody>
 </table>
-<p><strong>Highest-ROI single addition:</strong> hard-negative fine-tune. The model already has fashion priors; teaching it to distinguish "red tie + white shirt" from "white tie + red shirt" demands labeled pairs more than architecture.</p>
+<p><strong>The single highest-ROI change</strong> is hard-negative fine-tuning. The model already has fashion priors; teaching it to distinguish <em>"red tie + white shirt"</em> from <em>"white tie + red shirt"</em> needs labelled pairs, not a new architecture. The current code is structured to slot a fine-tuned model in by changing one config field.</p>
+<h3 id="43-other-directions">4.3 Other directions</h3>
+<ul>
+<li><strong>Image-to-image search.</strong> Add <code>--image &lt;path&gt;</code> to <code>retriever/search.py</code> for visual-similarity lookups using the same index. Useful for "more like this".</li>
+<li><strong>Hard-negative dataset construction.</strong> A small, carefully-labelled compositional dataset (~1k pairs) would unblock fine-tuning and serve as a held-out evaluation set.</li>
+<li><strong>Streaming catalogue updates.</strong> Replace file-based metadata with a vector DB that supports live upserts (Milvus, Qdrant).</li>
+</ul>
 <hr />
-<h2 id="appendix-a-codebase">Appendix A. Codebase</h2>
+<h2 id="appendix-a-codebase">Appendix A — Codebase</h2>
 <p><strong>GitHub:</strong> <a href="https://github.com/amanraj74/Glance-fashion-search">github.com/amanraj74/Glance-fashion-search</a></p>
-<p>The repository contains the full pipeline — indexer, retriever, scripts, Streamlit app, tests, and this writeup. Local reproduction instructions are in Appendix B below.</p>
+<p>The repository contains the full pipeline: indexer, retriever, scripts, Streamlit demo, tests, and this writeup. README at the repo root covers installation, configuration, and command reference.</p>
 <hr />
-<h2 id="appendix-b-reproducibility">Appendix B. Reproducibility</h2>
-<p>All commands are run from the repository root with the venv activated.</p>
-<pre><code class="language-powershell">.\venv\Scripts\Activate.ps1
+<h2 id="appendix-b-how-to-reproduce">Appendix B — How to reproduce</h2>
+<p>All commands assume the repository root and an activated virtual environment.</p>
+<pre><code class="language-bash"># 1. Install dependencies
+python -m venv venv
+source venv/bin/activate          # or .\venv\Scripts\Activate.ps1 on Windows
+pip install --upgrade pip
+pip install -r requirements.txt
+pip install pytest streamlit
 
-# 1. Build the image index (downloads ~500 MB ViT-B-16-SigLIP-512 weights)
+# 2. Build the image index (downloads ~1 GB of fashionCLIP weights)
 python indexer/build_index.py
 
-# 2. Generate BLIP captions and embed them (~500 MB BLIP-base weights)
+# 3. Generate BLIP captions and embed them (~500 MB BLIP-base weights)
 python scripts/build_caption_index.py
 
-# 3. Run the 5-rubric evaluation harness
+# 4. Run the 5-query evaluation harness
 python scripts/run_eval.py
 
-# 4. Compare configs
+# 5. Run the A/B ablation comparison
 python scripts/run_ablation.py
 
-# 5. Build the PDF writeup (needs `pip install weasyprint` for PDF)
-pip install weasyprint
+# 6. Render this writeup to HTML / PDF
 python scripts/build_report.py
 
-# 6. Run the interactive demo
-pip install streamlit
+# 7. Launch the interactive web demo
 streamlit run app/streamlit_app.py
 </code></pre>
-<p>Expected wall-clock on a CPU-only machine:</p>
+<p><strong>Expected wall-clock on CPU:</strong></p>
 <table>
 <thead>
 <tr>
 <th>Step</th>
-<th>Wall time</th>
+<th>Time</th>
 <th>Output</th>
 </tr>
 </thead>
 <tbody>
 <tr>
 <td><code>indexer/build_index.py</code></td>
-<td>15 – 25 min</td>
+<td>15–25 min</td>
 <td><code>output/faiss.index</code></td>
 </tr>
 <tr>
 <td><code>scripts/build_caption_index.py</code></td>
-<td>30 – 60 min</td>
+<td>30–60 min</td>
 <td><code>output/captions.json</code>, <code>output/captions.index</code></td>
 </tr>
 <tr>
 <td><code>scripts/run_eval.py</code></td>
 <td>&lt; 1 min</td>
-<td><code>eval/results/*.json</code>, <code>*.png</code></td>
+<td><code>eval/results/*.json</code>, <code>eval/results/*.png</code></td>
 </tr>
 <tr>
 <td><code>scripts/run_ablation.py</code></td>
@@ -578,17 +610,23 @@ streamlit run app/streamlit_app.py
 <tr>
 <td><code>scripts/build_report.py</code></td>
 <td>&lt; 30 s</td>
-<td><code>report/*.html</code>, <code>*.pdf</code></td>
+<td><code>report/Glance_Internship_Report.html</code>, <code>report/Glance_Internship_Report.pdf</code></td>
 </tr>
 </tbody>
 </table>
+<p><strong>Tests:</strong></p>
+<pre><code class="language-bash">pytest tests/ -v
+</code></pre>
+<p>21 tests pass in ~10 seconds. No model download required.</p>
 <hr />
-<h2 id="appendix-c-limitations-honest-tradeoffs">Appendix C. Limitations &amp; Honest Tradeoffs</h2>
+<h2 id="appendix-c-honest-tradeoffs">Appendix C — Honest tradeoffs</h2>
 <ul>
-<li><strong>Compute:</strong> CPU-only training environment, so no fine-tuning was performed. The system is strong out of the box (fashion-tuned embedding + caption augmentation + cross-encoder re-ranking) but cannot be made stronger through training without GPU access.</li>
-<li><strong>Dataset size:</strong> 3,200 images is small. A production deployment would target ≥ 100k and would benefit from <code>IndexIVFFlat</code> or a managed vector DB (Milvus / Qdrant).</li>
-<li><strong>Auto-evaluation:</strong> Without labeled ground truth, the "ablation" comparison is relative. A real product team should pair this with click-through metrics from a live A/B test.</li>
-<li><strong>Hard-negative fine-tune:</strong> Documented as future work because it requires GPU and a held-out validation set; the architectural scaffolding is ready for it.</li>
+<li><strong>Compute.</strong> The project was developed on a CPU-only machine. No fine-tuning was performed; the architectural scaffolding for fine-tuning is ready but unexercised.</li>
+<li><strong>Dataset size.</strong> 3,200 images is a small catalogue. Production would target ≥100k and would benefit from <code>IndexIVFFlat</code> or a managed vector DB.</li>
+<li><strong>Auto-evaluation is relative.</strong> Without labelled ground truth, the ablation numbers compare configurations against each other, not against a fixed "correct answer". A production team should pair this with click-through metrics from a live A/B test.</li>
+<li><strong>Hard-negative fine-tune deferred.</strong> Documented in §4.2 as the highest-ROI precision lever, but it requires GPU access and a labelled compositional dataset.</li>
 </ul>
+<hr />
+<p><em>This writeup is the deliverable required by §5 of the assignment brief. The accompanying code is the deliverable required by §5.3.</em></p>
 </body>
 </html>

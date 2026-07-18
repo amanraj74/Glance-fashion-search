@@ -47,6 +47,9 @@ htmlcov/
 .mypy_cache/
 .ruff_cache/
 
+# Stale screenshots at the repo root from earlier debugging sessions
+Screenshot (2[0-9][0-9][0-9]).png
+
 # Internal engineering docs (kept locally only, not for public review)
 AGENT.md
 TODO.md

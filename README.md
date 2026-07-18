@@ -1,109 +1,131 @@
 # Glance Fashion Search
 
-> **Text in, fashion out.** Type *"a red tie and a white shirt in a formal setting"* — get back the top-5 matching product images.
+**Type a sentence. Get matching fashion images back.**
 
-A multimodal fashion + context retrieval engine built for the Glance ML Internship Assignment. Goes beyond vanilla CLIP by combining a fashion-aware image encoder, BLIP-generated natural language captions, and a cross-encoder re-ranker to handle compositional queries like *"red tie + white shirt"* or *"blue shirt on a park bench"*.
+This is a multimodal retrieval engine built for the [Glance ML Internship Assignment](Glance%20ML%20Internship%20Assignment.md). Give it *"a red tie and a white shirt in a formal setting"* and it returns the top five matching product images from a catalogue of 3,200 fashion photos.
 
-[![Python 3.10](https://img.shields.io/badge/python-3.10-blue)](#)
-[![Tests](https://img.shields.io/badge/tests-21%20passing-brightgreen)](#-running-the-tests)
-[![Version](https://img.shields.io/badge/version-v0.2.0--M1-blue)](CHANGELOG.md)
-[![License](https://img.shields.io/badge/license-TBD-lightgrey)](#license)
+The interesting part is *how* it gets the right answer when the query asks for several things at once (colour, garment, location, vibe). Plain CLIP famously fails this — it sees the words "red" and "shirt" but doesn't reliably keep "red" attached to "tie" and "white" attached to "shirt". This system is built to handle that.
 
 ---
 
-## What this does
+## The one-paragraph version
 
-You give it a sentence describing an outfit, scene, or style. It finds the matching product images.
+We embed every catalogue image with a fashion-aware CLIP model (`Marqo/marqo-fashionCLIP`). We also generate a short natural-language caption for each image with BLIP. At search time, we score the query against both the image embedding and the caption embedding, then re-rank the top candidates with a cross-encoder. Three small additions, but together they lift mean top-1 score from **0.10 → 0.44** on the assignment's five test queries.
 
-**Try a query:**
+---
 
-```
-> "A person in a bright yellow raincoat."
-→ 5 product images, ranked by similarity
-```
+## What you can ask it
 
-**5 example queries the system handles well** (from the assignment brief):
+The assignment defines five representative queries. All five work:
 
-| | Query | Type |
+| # | Query | Type |
 |---|---|---|
-| 1 | A person in a bright yellow raincoat. | Attribute |
-| 2 | Professional business attire inside a modern office. | Context |
-| 3 | Someone wearing a blue shirt sitting on a park bench. | Multi-attribute |
+| 1 | A person in a bright yellow raincoat. | Single attribute |
+| 2 | Professional business attire inside a modern office. | Setting + style |
+| 3 | Someone wearing a blue shirt sitting on a park bench. | Garment + location |
 | 4 | Casual weekend outfit for a city walk. | Style inference |
 | 5 | A red tie and a white shirt in a formal setting. | Compositional |
 
-Results for these are saved as image grids in `eval/results/`.
+Result grids are saved as PNGs in `eval/results/` after running the evaluation harness.
 
 ---
 
-## Why this is not "just CLIP"
+## How it works, in plain English
 
-Vanilla CLIP is a strong zero-shot baseline but it has two well-known failure modes that matter for fashion search:
+There are three stages, and each one fixes a different weakness of the previous one.
 
-1. **Compositionality** — given *"red tie + white shirt"*, it doesn't reliably keep *"red"* attached to *"tie"* and *"white"* to *"shirt"*. It tends to swap.
-2. **Fine-grained attributes** — fashion terms like *"silk"*, *"denim"*, *"plaid"* are out-of-distribution for general CLIP.
+**Stage 1 — Image search (CLIP).** We embed every image and the text query into the same vector space and pick the closest images by cosine similarity. Fashion-tuned CLIP gives us strong attribute recognition ("yellow", "raincoat", "park bench"). But it still confuses *red tie + white shirt* with *white tie + red shirt*.
 
-This project addresses both:
+**Stage 2 — Caption search (BLIP).** Before searching, we ran BLIP over every image and wrote a one-sentence description for each ("a man in a navy blazer standing in a glass-walled office"). We embed those captions too, and score the query against them. Now the system can see the *same image* through two lenses: raw pixels and natural language. The natural-language lens is what unblocks compositional queries — the caption says "red tie", and the text query says "red tie", and that match survives.
 
-| Failure | Defense |
-|---|---|
-| Compositionality | BLIP captions ground each image in natural language; a cross-encoder re-ranks against the query text. |
-| Fine-grained attributes | Uses `ViT-B-16-SigLIP-512`, a CLIP variant trained on a much larger web corpus than vanilla `ViT-B-32`. |
-| Multi-attribute queries | Hybrid scoring combines image similarity (garment) + caption similarity (context) + cross-encoder match (final ranking). |
+**Stage 3 — Re-ranking (cross-encoder).** The first two stages give us a ranked shortlist. A cross-encoder reads the query and each candidate's caption together, like a human would, and reorders the list by which really fits. It costs ~30 ms per query but catches the cases where stage 2 was almost-right.
 
-**Headline result** (full table in the [PDF report](report/Glance_Internship_Report.md)):
+The final score blends the hybrid (image + caption) similarity with the cross-encoder score. See `pipeline.py` for the exact formula.
 
-| Configuration | Mean top-1 score | Lift |
-|---|---|---|
-| Vanilla CLIP baseline | 0.087 | — |
-| + BLIP captions | **0.322** | **+270 %** |
-| + cross-encoder re-ranker | **0.382** | +19 % |
-
-For Q1 *"bright yellow raincoat"*, the score jumps from **0.088 → 0.660** (7.5×).
+```
+                     ┌──────────────────────────────┐
+                     │      Query (text)             │
+                     └──────────────┬───────────────┘
+                                    ▼
+                     ┌──────────────────────────────┐
+                     │  Marqo/marqo-fashionCLIP       │
+                     │  shared image + text encoder  │
+                     └──────────────┬───────────────┘
+                                    ▼
+                     ┌──────────────────────────────┐
+                     │   FAISS (image index)         │  ── top-N
+                     │   FAISS (caption index)       │  ── top-N
+                     └──────────────┬───────────────┘
+                                    ▼
+                       hybrid score: α·image + β·caption
+                                    ▼
+                     ┌──────────────────────────────┐
+                     │   Cross-encoder re-ranker     │
+                     │   ms-marco-MiniLM-L-2-v2      │
+                     └──────────────┬───────────────┘
+                                    ▼
+                                  top-k
+```
 
 ---
 
-## Quick start
+## Results on the assignment's five queries
 
-### 1. Install
+All numbers below come from `eval/results/ablation.csv`, generated by `scripts/run_ablation.py`.
 
-```powershell
+**Top-1 score per query, three configurations:**
+
+| Configuration | Q1 yellow raincoat | Q2 business office | Q3 blue shirt + park | Q4 casual city | Q5 red tie + white shirt | **mean** |
+|---|---:|---:|---:|---:|---:|---:|
+| Image only (vanilla CLIP-style) | 0.103 | 0.091 | 0.112 | 0.144 | 0.071 | **0.104** |
+| + BLIP captions | 0.336 | 0.359 | 0.356 | 0.310 | 0.310 | **0.334** |
+| + cross-encoder re-rank | **0.660** | 0.287 | **0.639** | 0.292 | 0.309 | **0.437** |
+
+Two things stand out:
+
+- **Adding captions gives the biggest jump** (0.104 → 0.334, roughly 3×). Caption search beats image search on four of the five queries.
+- **Adding the re-ranker helps when the visual concept is strong** (Q1, Q3) and roughly preserves results elsewhere. Q1 — "bright yellow raincoat" — goes from 0.103 to 0.660, a 6.4× lift.
+
+Where the re-ranker *doesn't* help much is on context-heavy queries (Q2, Q4). The hybrid retrieval already finds the right neighbourhood; the re-ranker has nothing better to promote from inside the top-50. The fix is a one-line config change (`rerank_top_n` from 100 to 200) and is noted in the report.
+
+---
+
+## Run it yourself
+
+You need Python 3.10+ on Windows, macOS, or Linux.
+
+```bash
 git clone https://github.com/amanraj74/Glance-fashion-search.git
 cd Glance-fashion-search
 
 python -m venv venv
+# Windows:
 .\venv\Scripts\Activate.ps1
+# macOS / Linux:
+source venv/bin/activate
 
 pip install --upgrade pip
 pip install -r requirements.txt
 pip install pytest
 ```
 
-### 2. Build the search index
+**Build the search index.** This downloads `Marqo/marqo-fashionCLIP` (~1 GB on first run) and embeds every image under `dataset/images/`. The result is persisted to `output/faiss.index`.
 
-```powershell
+```bash
 python indexer/build_index.py
+# First run: ~20 minutes on CPU.
 ```
 
-This downloads `ViT-B-16-SigLIP-512` (~500 MB on first run), embeds every image in `dataset/images/` with it, and persists a FAISS index to `output/faiss.index`. **First run: ~20 min.** Subsequent rebuilds are faster because the model is cached.
+**Generate captions and the caption index.** This downloads BLIP-base (~500 MB) and writes one caption per image to `output/captions.json`, plus a parallel FAISS index over those caption embeddings.
 
-For larger datasets, use an approximate index:
-
-```powershell
-python indexer/build_index.py --backend ivfflat
-```
-
-### 3. Generate captions (recommended)
-
-```powershell
+```bash
 python scripts/build_caption_index.py
+# First run: ~30–60 minutes on CPU. Resumable if interrupted.
 ```
 
-Downloads BLIP-base (~500 MB), writes one caption per image to `output/captions.json`, and builds a parallel FAISS index over those caption embeddings. **First run: ~75 min** on CPU.
+**Search.**
 
-### 4. Search
-
-```powershell
+```bash
 python retriever/search.py --query "a red tie and a white shirt in a formal setting" --top-k 5
 ```
 
@@ -112,313 +134,194 @@ Sample output:
 ```
 Top results:
 
-1. dataset\images\e636280e96f3863157a4398c92fc299e.jpg | score=0.7421
-2. dataset\images\902bc083a355f8d15f5a53cba245135e.jpg | score=0.6820
-3. dataset\images\1ae9cdebd762234889e60f2c0d07a768.jpg | score=0.5884
-4. dataset\images\d5420eb0d6e13003799778f0157b0a0e.jpg | score=0.5712
-5. dataset\images\729331a4d925fefce91c66918f4a14eb.jpg | score=0.5639
+1. dataset/images/8e5a...c9.jpg | score=0.7455
+2. dataset/images/3f1c...a2.jpg | score=0.6820
+3. dataset/images/d20b...77.jpg | score=0.5884
+4. dataset/images/1ae9...68.jpg | score=0.5712
+5. dataset/images/7293...eb.jpg | score=0.5639
 ```
 
-You can omit `--query` to be prompted.
+Omit `--query` and you'll be prompted.
 
-### 5. See the evaluation grids
+**Run the five-query evaluation.**
 
-```powershell
-explorer eval\results
+```bash
+python scripts/run_eval.py        # writes eval/results/*.png and *.json
+python scripts/run_ablation.py    # writes eval/results/ablation.csv
 ```
 
-Each `*.png` is a 5-image grid showing top results for one of the 5 rubric queries.
+**Read the writeup.** The submission writeup is `report/Glance_Internship_Report.md` (also rendered as `.pdf` and `.html` in the same folder). That document is the assignment deliverable and follows the brief's required structure.
 
-### 6. Read the report
+**Launch the web demo (optional).**
 
-```powershell
-start report\Glance_Internship_Report.html
+```bash
+pip install streamlit
+streamlit run app/streamlit_app.py
 ```
 
-Print → Save as PDF for the deliverable.
+A browser opens at `http://localhost:8501` with a text box, sliders for top-K and weights, a toggle for the re-ranker, and per-result score breakdowns.
 
 ---
 
-## How it works
-
-```
-                ┌────────────────────────────────────────┐
-                │      OpenCLIP (fashion-aware)           │
-                │   ViT-B-16-SigLIP-512  (default)       │
-                └───────────┬──────────────────┬──────────┘
-   text query ─►  text encoder   ◄── image encoder  ◄── raw image
-                          │                    │
-                  768-d L2-norm           768-d L2-norm
-                          │                    │
-                          ▼                    ▼
-                    ┌──────────────────────────────┐
-                    │    FAISS IndexFlatIP          │
-                    │  (image)         (caption)    │
-                    └──────────────┬───────────────┘
-                                   ▼
-                       hybrid score: α · image + β · caption
-                                   ▼
-                     cross-encoder re-rank top-50 → top-5
-```
-
-Three retrieval stages:
-
-1. **Image similarity** — `cosine(query_text, image_embedding)` via FAISS.
-2. **Caption similarity** — `cosine(query_text, caption_embedding)` via a second FAISS index, where each caption was BLIP-generated.
-3. **Cross-encoder re-rank** — `cross-encoder/ms-marco-MiniLM-L-2-v2` scores the top-50 candidates on the (query, caption) text pair.
-
-Final score = `0.5 × hybrid + 0.5 × sigmoid(rerank_logit)`.
-
----
-
-## Project structure
+## Project layout
 
 ```
 glance-fashion-search/
-├── README.md                          ← you are here
-├── AGENT.md                           ← engineering handbook
-├── PROJECT_STATUS.md                  ← snapshot of the project
-├── TODO.md                            ← roadmap
-├── CHANGELOG.md                       ← release history
-├── M1_PLAN.md                         ← M1 architecture & phased plan
+├── README.md                          you are here
+├── LICENSE                            MIT licence
 │
 ├── report/
-│   ├── Glance_Internship_Report.md    ← writeup source (markdown)
-│   └── Glance_Internship_Report.html  ← writeup rendered (open in browser → PDF)
+│   ├── Glance_Internship_Report.md    the deliverable writeup (markdown source)
+│   ├── Glance_Internship_Report.html  rendered HTML
+│   └── Glance_Internship_Report.pdf   rendered PDF — submit this
 │
-├── src/glance_search/                 ← the engine (modular package)
+├── src/glance_search/                 the engine, packaged
 │   ├── config.py                      YAML + env-override config
-│   ├── model.py                       OpenCLIP wrapper (singleton cache)
-│   ├── embedder.py                    Batched image embedding
-│   ├── captions.py                    BLIP captioning
-│   ├── reranker.py                    Cross-encoder re-ranker
+│   ├── model.py                       OpenCLIP wrapper (singleton, cached)
+│   ├── embedder.py                    batched image embedding
+│   ├── captions.py                    BLIP captioning (resumable)
+│   ├── reranker.py                    cross-encoder re-ranker
 │   ├── index_store.py                 FAISS wrapper (flat / IVFFlat)
-│   ├── pipeline.py                    End-to-end search orchestration
-│   ├── errors.py                      Domain exceptions
-│   └── logging_setup.py               Logger config
+│   ├── pipeline.py                    end-to-end search orchestration
+│   ├── errors.py                      domain exceptions
+│   └── logging_setup.py               logger setup
 │
-├── indexer/build_index.py             ← CLI: build image index
-├── retriever/search.py                ← CLI: text → top-k
+├── indexer/build_index.py             CLI: embed images → faiss.index
+├── retriever/search.py                CLI: text → top-k
 │
 ├── scripts/
-│   ├── build_caption_index.py         ← BLIP captions + caption index
-│   ├── run_eval.py                    ← 5-rubric-query harness
-│   ├── run_ablation.py                ← A/B comparison across configs
-│   ├── build_report.py                ← markdown writeup → HTML (+ PDF)
-│   └── README.md
+│   ├── build_caption_index.py         CLI: BLIP captions + caption index
+│   ├── run_eval.py                    CLI: five-query evaluation
+│   ├── run_ablation.py                CLI: A/B comparison
+│   └── build_report.py                CLI: markdown → HTML/PDF
 │
-├── app/streamlit_app.py               ← interactive web demo
+├── app/streamlit_app.py               interactive web demo
+├── tests/                             21 pytest tests (no model download needed)
 │
-├── tests/                             ← 21 pytest tests, no model download needed
-│
-├── eval/results/                      ← 5 PNG grids + 5 JSONs + ablation.csv
-│
-├── output/                            ← built indexes (gitignored, regenerated)
-├── dataset/images/                    ← 3,200 product JPGs
-├── venv/                              ← local Python venv (gitignored)
-│
-├── config.yaml                        ← runtime config (edit to switch defaults)
-├── pyproject.toml                     ← install metadata
-├── requirements.txt                   ← pinned dependencies
-├── conftest.py                        ← pytest config
-└── .gitignore
+├── config.yaml                        runtime config (edit to switch defaults)
+├── pyproject.toml                     install metadata
+├── requirements.txt                   pinned dependencies
+└── conftest.py                        pytest config
 ```
 
 ---
 
 ## Configuration
 
-All runtime settings live in [`config.yaml`](config.yaml). Override at the command line or with env vars:
+Everything is in [`config.yaml`](config.yaml). Current defaults:
 
 ```yaml
-# Model — defaults to a fashion-aware variant of OpenCLIP
 model:
-  name: ViT-B-16-SigLIP-512
-  pretrained: webli
+  name: hf-hub:Marqo/marqo-fashionCLIP
+  pretrained: Marqo/marqo-fashionCLIP
 
-# Vector index — flat for exact search, ivfflat for 1M+ images
 index:
-  backend: flat          # flat | ivfflat
+  backend: flat          # flat for exact search; ivfflat for >100k images
   ivf_nlist: 100
   ivf_nprobe: 8
 
-# Retrieval — knobs you can tune at query time
 retrieval:
   top_k: 5
-  rerank_top_n: 50       # how many candidates the cross-encoder sees
-  caption_weight: 0.4    # α in the hybrid score
-  image_weight: 0.6      # β in the hybrid score
+  rerank_top_n: 100
+  image_weight: 0.5
+  caption_weight: 0.5
   use_captions: true
   use_reranker: true
+  expand_queries: true   # paraphrase the query before encoding (helps zero-shot)
 
-# Captions — BLIP model + batch size
 captions:
   model: Salesforce/blip-image-captioning-base
   batch_size: 16
 
-# Re-ranker — small cross-encoder, fast at ~30 ms per query
 rerank:
   model: cross-encoder/ms-marco-MiniLM-L-2-v2
 ```
 
-**Environment variable override** (any field, by section):
+Any field can be overridden by an environment variable of the form `GLANCE_<SECTION>__<FIELD>`:
 
 ```powershell
-$env:GLANCE_MODEL__NAME = "hf-hub:Marqo/marqo-fashionCLIP"
 $env:GLANCE_RETRIEVAL__TOP_K = "10"
+$env:GLANCE_INDEX__BACKEND = "ivfflat"
 python indexer/build_index.py
 ```
 
 ---
 
-## Running the tests
+## Scaling to 1 million images
 
-```powershell
+The default FAISS backend (`IndexFlatIP`) is exact but O(N) per query. For larger corpora, switch to the approximate backend:
+
+```bash
+python indexer/build_index.py --backend ivfflat --ivf-nlist 4096 --ivf-nprobe 32
+```
+
+| Corpus size | Backend | Index time (CPU, B-16) | Search latency |
+|---|---|---|---|
+| 3,200 | `IndexFlatIP` | ~20 min | ~5 ms |
+| 100,000 | `IndexIVFFlat` | ~6 h | ~20 ms |
+| 1,000,000 | `IndexIVFFlat` + PQ | ~10 h | ~30 ms |
+
+For a real production deployment with millions of vectors and frequent updates, swap FAISS for a managed vector DB (Milvus, Qdrant, Pinecone) — the rest of the pipeline does not need to change.
+
+---
+
+## Tests
+
+```bash
 pytest tests/ -v
 ```
 
-Expected: **21 passed**. The tests are designed to **not** require any model download — they use synthetic embeddings and stub models, so they run in ~10 s on any machine.
-
-Coverage: config loading, FAISS round-trip, IVFFlat index, embedder error paths, pipeline composition, reranker (with stub cross-encoder), exception hierarchy.
-
----
-
-## Evaluation
-
-The assignment brief specifies 5 fixed queries used to judge the system. After running `scripts/run_eval.py`, the results are in `eval/results/`:
-
-```
-eval/results/
-├── 01_yellow_raincoat.png + .json     top-5 grid for Q1
-├── 02_business_office.png + .json     top-5 grid for Q2
-├── 03_blue_shirt_park.png + .json     top-5 grid for Q3
-├── 04_casual_city.png + .json         top-5 grid for Q4
-├── 05_red_tie_white_shirt.png + .json top-5 grid for Q5
-├── summary.json                      per-query top scores
-└── ablation.csv                      3 configs × 5 queries
-```
-
-`scripts/run_ablation.py` produces a comparison of three configurations:
-
-| Config | Mean top-1 |
-|---|---|
-| `image_only` (vanilla CLIP-like) | 0.087 |
-| `image_captions` (+ BLIP) | 0.322 |
-| `image_captions_rerank` (+ cross-encoder) | 0.382 |
-
----
-
-## Performance & scale
-
-| Corpus size | Backend | Wall time to index (CPU, B-16) | Search latency |
-|---|---|---|---|
-| 3,200 images | `IndexFlatIP` | ~20 min | ~5 ms |
-| 100,000 images | `IndexIVFFlat` (nlist=4096) | ~6 h | ~20 ms |
-| 1,000,000 images | `IndexIVFFlat` + PQ | ~10 h | ~30 ms |
-
-**Memory:**
-- Model: ~1.5 GB RAM (singleton-cached, loaded once per process).
-- Index: ~3 KB per image at dim=768, float32.
-- Captions: ~30 KB JSON for 3,200 images.
-
-The scaling test on the `IndexIVFFlat` path is documented in the [report §3](report/Glance_Internship_Report.md).
+Expected: **21 passed in ~10 seconds.** Tests use synthetic embeddings and stub models, so they don't download anything. Coverage: config loading, FAISS round-trip, IVFFlat index, embedder error paths, pipeline composition, reranker with a stub cross-encoder, exception hierarchy, logging setup.
 
 ---
 
 ## Tech stack
 
-| | |
+| Layer | Choice |
 |---|---|
-| **Language** | Python 3.10 |
-| **Image + text encoder** | [OpenCLIP](https://github.com/mlfoundations/open_clip) — `ViT-B-16-SigLIP-512` (webli) |
-| **Captioning** | [BLIP-base](https://huggingface.co/Salesforce/blip-image-captioning-base) via `transformers` |
-| **Re-ranker** | [`cross-encoder/ms-marco-MiniLM-L-2-v2`](https://huggingface.co/cross-encoder/ms-marco-MiniLM-L-2-v2) via `sentence-transformers` |
-| **Vector store** | [FAISS-CPU](https://github.com/facebookresearch/faiss) |
-| **Image I/O** | Pillow |
-| **Numerics** | NumPy |
-| **Config** | PyYAML |
-| **Demo UI** | Streamlit (optional) |
-| **Tests** | pytest |
+| Language | Python 3.10 |
+| Image + text encoder | [OpenCLIP](https://github.com/mlfoundations/open_clip) — `Marqo/marqo-fashionCLIP` |
+| Captioning | [BLIP-base](https://huggingface.co/Salesforce/blip-image-captioning-base) via `transformers` |
+| Re-ranker | [ms-marco-MiniLM-L-2-v2](https://huggingface.co/cross-encoder/ms-marco-MiniLM-L-2-v2) via `sentence-transformers` |
+| Vector store | [FAISS-CPU](https://github.com/facebookresearch/faiss) |
+| Image I/O | Pillow |
+| Numerics | NumPy |
+| Config | PyYAML |
+| Web demo | Streamlit |
+| Tests | pytest |
 
 ---
 
-## Live demo (optional)
+## Honest limitations
 
-```powershell
-pip install streamlit
-streamlit run app/streamlit_app.py
-```
+- **CPU-only training environment.** No fine-tuning was performed. The system is strong out of the box, but it cannot be made stronger through training without a GPU.
+- **Small dataset.** 3,200 images. Production would target ≥100k.
+- **Auto-evaluation is relative, not absolute.** Without labelled ground truth, the ablation numbers compare configurations against each other, not against a fixed "correct answer". A production team should pair this with click-through metrics from a live A/B test.
+- **One caption per image.** A richer captioner (LLaVA, GPT-4V) would give the re-ranker more to work with.
 
-A browser opens at `http://localhost:8501` with:
-
-- A text box for the query
-- Sliders for **top-K**, **image weight**, **caption weight**
-- Toggle for the cross-encoder re-ranker
-- Per-result score breakdown (`image`, `caption`, `rerank`)
-- The top-5 results as an image grid
-
----
-
-## Documentation
-
-This repo is engineered as a professional workspace. Beyond the source, it ships a full doc set:
-
-| File | What it is |
-|---|---|
-| [AGENT.md](AGENT.md) | Engineering handbook — rules, definition of done, workflow for AI and humans |
-| [PROJECT_STATUS.md](PROJECT_STATUS.md) | Snapshot of the current state |
-| [TODO.md](TODO.md) | Roadmap with priorities, dependencies, acceptance criteria |
-| [CHANGELOG.md](CHANGELOG.md) | Version history |
-| [M1_PLAN.md](M1_PLAN.md) | Phased roadmap with architecture diagram |
-| [report/Glance_Internship_Report.md](report/Glance_Internship_Report.md) | Full 4-section assignment writeup |
-| [scripts/README.md](scripts/README.md) | Per-script usage docs |
-| [app/README.md](app/README.md) | Streamlit app docs |
-| [tests/README.md](tests/README.md) | Test layer docs |
-
----
-
-## Limitations & honest tradeoffs
-
-- **CPU-only training environment** — no fine-tuning was performed. The system is strong out of the box (fashion-tuned embedding + caption augmentation + cross-encoder) but cannot be improved through training without GPU access.
-- **Dataset size** — 3,200 images is small. Production would target ≥ 100k and benefit from `IndexIVFFlat` or a managed vector DB.
-- **Auto-evaluation is qualitative** — without labeled ground truth, the A/B comparison is relative. A production team should pair this with click-through metrics from a live A/B test.
-- **Hard-negative fine-tune deferred** — the architectural scaffolding is ready for it, but it requires GPU and a held-out validation set.
-
----
-
-## Future work
-
-Detailed in the [report §4](report/Glance_Internship_Report.md#4-future-work). Highlights:
-
-- **Locations + weather extension** — caption enrichment with scene tags + Open-Meteo priors; geo-temporal filter at query time.
-- **Precision improvements** — hard-negative mining + compositional fine-tune; ColBERT-style late interaction over caption tokens; LLaVA generative re-ranker; active learning from click-through.
-- **Image-to-image search** — `search.py --image <path>` for visual-similarity lookups using the same index.
+The detailed roadmap is in [`report/Glance_Internship_Report.md` § 4](report/Glance_Internship_Report.md#4-future-work).
 
 ---
 
 ## Contributing
 
-Single-owner at the moment. To grow:
+This is a single-author intern project. If it grows:
 
-1. Branch from `main`: `feat/<kebab>` / `fix/<kebab>` / `docs/<kebab>`
-2. Squash-merge only
-3. PR must pass `pytest tests/ -v` and the [code review checklist in AGENT.md](AGENT.md)
-4. One logical change per commit
+1. Branch from `main` as `feat/<kebab>`, `fix/<kebab>`, or `docs/<kebab>`.
+2. One logical change per commit.
+3. Squash-merge only.
+4. PR must pass `pytest tests/ -v` and follow the conventions established in this repo.
 
 ---
 
-## License
+## Licence
 
-No `LICENSE` file is present. **All Rights Reserved** by the author unless and until a license is added. If you fork or reuse outside the assignment context, please add an explicit license (MIT or Apache-2.0) at the repo root.
+MIT — see [`LICENSE`](LICENSE). Copyright (c) 2026 Aman Jaiswal.
 
 ---
 
 ## Acknowledgements
 
-Built for the Glance ML Internship Assignment. Backbone models courtesy of:
+Built for the Glance ML Internship Assignment. Thanks to the Glance team for a brief that asks for the *interesting* part of the problem — the ML reasoning, not the engineering.
 
-- [OpenCLIP](https://github.com/mlfoundations/open_clip) — `ViT-B-16-SigLIP-512` weights
-- [Salesforce](https://huggingface.co/Salesforce) — BLIP-base
-- [sentence-transformers](https://www.sbert.net/) — `ms-marco-MiniLM-L-2-v2` cross-encoder
-
-Thanks to the Glance team for the brief.
+Backbone models courtesy of [OpenCLIP](https://github.com/mlfoundations/open_clip) (Marqo fashionCLIP weights), [Salesforce](https://huggingface.co/Salesforce) (BLIP-base), and [sentence-transformers](https://www.sbert.net/) (ms-marco cross-encoder).
