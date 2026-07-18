@@ -36,7 +36,11 @@ class ClipModel:
                 pretrained=cfg.pretrained,
                 cache_dir=cfg.cache_dir,
             )
-            self.tokenizer = open_clip.get_tokenizer(cfg.name)
+            tokenizer_name = cfg.name if "hf-hub:" not in cfg.name else cfg.name.split("/", 1)[1]
+            try:
+                self.tokenizer = open_clip.get_tokenizer(cfg.name)
+            except Exception:
+                self.tokenizer = open_clip.get_tokenizer(tokenizer_name)
         except Exception as exc:
             raise ModelLoadError(f"failed to load model {cfg.name}: {exc}") from exc
         self.model = model.to(self.device).eval()

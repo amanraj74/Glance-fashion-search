@@ -15,7 +15,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "src"))
 
 import streamlit as st
 
-from glance_search.config import load_config
+from glance_search.config import Config, load_config
 from glance_search.logging_setup import configure_logging, get_logger
 from glance_search.model import ClipModel
 from glance_search.pipeline import load_indexes, search
@@ -63,6 +63,7 @@ def main() -> None:
                 st.session_state["pending_query"] = ex
         top_k = st.slider("Top-K", 1, 20, cfg.retrieval.top_k)
         use_rerank = st.checkbox("Cross-encoder re-ranker", value=cfg.retrieval.use_reranker)
+        expand_q = st.checkbox("Query expansion (5 variants)", value=getattr(cfg.retrieval, "expand_queries", True), help="Encode 5 query variants and take the best match per image. Improves precision on compositional queries.")
         image_w = st.slider("Image weight", 0.0, 1.0, cfg.retrieval.image_weight, 0.05)
         cap_w = st.slider("Caption weight", 0.0, 1.0, cfg.retrieval.caption_weight, 0.05)
         show_caption = st.checkbox("Show image captions", value=True)
@@ -81,6 +82,7 @@ def main() -> None:
             cfg.retrieval,
             top_k=top_k,
             use_reranker=use_rerank,
+            expand_queries=expand_q,
             image_weight=image_w,
             caption_weight=cap_w,
         ),

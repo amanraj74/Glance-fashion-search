@@ -4,28 +4,28 @@
   "results": [
     {
       "rank": 1,
-      "path": "dataset\\images\\8ec2cc47cc8ae60da6de3872a561a6af.jpg",
-      "score": 0.152740736616058
+      "path": "dataset\\images\\3d210e0f2b3843e00248c42ff7e8db2e.jpg",
+      "score": 0.34125983715057373
     },
     {
       "rank": 2,
-      "path": "dataset\\images\\3423d1b381d437ad26011e628173bc63.jpg",
-      "score": 0.152740736616058
+      "path": "dataset\\images\\3c9745ee71fdc72c43f9baec5f9e27f0.jpg",
+      "score": 0.34125983715057373
     },
     {
       "rank": 3,
-      "path": "dataset\\images\\2907c60baee70f30b349de950935bdd4.jpg",
-      "score": 0.152740736616058
+      "path": "dataset\\images\\3c38ab274f7b772f00c239f3e642fbf0.jpg",
+      "score": 0.34125983715057373
     },
     {
       "rank": 4,
-      "path": "dataset\\images\\0c19eca5f90b66b915e2f6cbd421574f.jpg",
-      "score": 0.152740736616058
+      "path": "dataset\\images\\4326995f16fdd834b4d56c175fdb2f2d.jpg",
+      "score": 0.34125983715057373
     },
     {
       "rank": 5,
-      "path": "dataset\\images\\60b18000fbe38a3e0efc55e8ab5656da.jpg",
-      "score": 0.1523657715402989
+      "path": "dataset\\images\\42aa5e7f44cccbefc235011ad072f6d5.jpg",
+      "score": 0.34125983715057373
     }
   ]
 }

@@ -55,11 +55,12 @@ class IndexConfig:
 @dataclass(frozen=True)
 class RetrievalConfig:
     top_k: int = 5
-    rerank_top_n: int = 50
-    caption_weight: float = 0.4
-    image_weight: float = 0.6
+    rerank_top_n: int = 100
+    caption_weight: float = 0.5
+    image_weight: float = 0.5
     use_captions: bool = True
     use_reranker: bool = True
+    expand_queries: bool = True
 
 
 @dataclass(frozen=True)

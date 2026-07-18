@@ -1,6 +1,6 @@
 model:
-  name: ViT-B-16-SigLIP-512
-  pretrained: webli
+  name: hf-hub:Marqo/marqo-fashionCLIP
+  pretrained: Marqo/marqo-fashionCLIP
   cache_dir: null
   device: auto
 
@@ -17,10 +17,12 @@ index:
 
 retrieval:
   top_k: 5
-  rerank_top_n: 50
-  caption_weight: 0.4
+  rerank_top_n: 100
+  caption_weight: 0.5
+  image_weight: 0.5
   use_captions: true
   use_reranker: true
+  expand_queries: true
 
 captions:
   enabled: true

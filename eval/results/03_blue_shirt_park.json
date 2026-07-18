@@ -5,27 +5,27 @@
     {
       "rank": 1,
       "path": "dataset\\images\\f06fd9e18c7a2c5b533e68de88fb487b.jpg",
-      "score": 0.6218830567253986
+      "score": 0.7207269039405741
     },
     {
       "rank": 2,
-      "path": "dataset\\images\\a15c6c13e9f38c1cef065bac315dd032.jpg",
-      "score": 0.6151094190359769
+      "path": "dataset\\images\\e63acd0cb7b2d0cd626724bc0dc57c4a.jpg",
+      "score": 0.6982760396255412
     },
     {
       "rank": 3,
-      "path": "dataset\\images\\e63acd0cb7b2d0cd626724bc0dc57c4a.jpg",
-      "score": 0.6039182152999797
+      "path": "dataset\\images\\cd35a2d7fa74324fb80a0c0d4a55bf6b.jpg",
+      "score": 0.6916982971140166
     },
     {
       "rank": 4,
-      "path": "dataset\\images\\cd35a2d7fa74324fb80a0c0d4a55bf6b.jpg",
-      "score": 0.5809477115550821
+      "path": "dataset\\images\\a15c6c13e9f38c1cef065bac315dd032.jpg",
+      "score": 0.6785064925289255
     },
     {
       "rank": 5,
       "path": "dataset\\images\\ec791dd926d464f45e3f4e9d78aafd10.jpg",
-      "score": 0.5681732966134135
+      "score": 0.6283764077851359
     }
   ]
 }

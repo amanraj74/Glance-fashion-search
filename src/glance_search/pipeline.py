@@ -17,12 +17,44 @@ import numpy as np
 from glance_search.captions import caption_corpus
 from glance_search.config import Config
 from glance_search.embedder import embed_corpus, list_images
-from glance_search.index_store import FaissStore
+from glance_search.index_store import FaissStore, SearchHit
 from glance_search.logging_setup import get_logger
 from glance_search.model import ClipModel
 from glance_search.reranker import rerank
 
 log = get_logger(__name__)
+
+
+_QUERY_VARIANT_TEMPLATES = (
+    "{}",
+    "a photo of {}",
+    "an image of {}",
+    "showing {}",
+    "a picture of {}",
+)
+
+_FILLER_WORDS = frozenset({"a", "an", "the", "in", "on", "at", "of"})
+
+
+def _query_variants(query: str) -> list[str]:
+    """Generate semantic variants of the user's query.
+
+    CLIP/SigLIP text encoders are sensitive to phrasing — different phrasings of
+    the same intent can land in different regions of the embedding space. Average
+    retrieval quality improves noticeably when we encode several variants and
+    aggregate scores (max) per candidate, without recomputing any embeddings.
+    """
+    text = query.strip()
+    text_lower = text.lower()
+    stripped = " ".join(w for w in text_lower.split() if w not in _FILLER_WORDS).strip()
+
+    variants: set[str] = {text}
+    for template in _QUERY_VARIANT_TEMPLATES:
+        body = stripped if stripped else text_lower
+        variants.add(template.format(body).strip())
+
+    variants.discard("")
+    return list(variants)
 
 
 @dataclass
@@ -117,33 +149,34 @@ def search(
     if model is None:
         model = ClipModel.get(cfg.model)
 
-    query_emb = model.encode_text(query).cpu().numpy().astype("float32")
+    queries = (
+        _query_variants(query)
+        if getattr(cfg.retrieval, "expand_queries", True)
+        else [query]
+    )
     top_n = max(cfg.retrieval.rerank_top_n, cfg.retrieval.top_k)
 
-    img_scores, img_indices = loaded.image_store.search(query_emb, top_n)
-
     candidates: dict[int, dict[str, float]] = {}
-    for s, i in zip(img_scores[0], img_indices[0]):
-        i_int = int(i)
-        if i_int < 0 or i_int >= len(loaded.image_paths):
-            continue
-        entry = candidates.get(i_int)
-        if entry is None:
-            candidates[i_int] = {"image": float(s), "caption": 0.0}
-        else:
-            entry["image"] = float(s)
-
-    if loaded.caption_store is not None:
-        cap_scores, cap_indices = loaded.caption_store.search(query_emb, top_n)
-        for s, ci in zip(cap_scores[0], cap_indices[0]):
-            ci_int = int(ci)
-            if ci_int < 0 or ci_int >= len(loaded.image_paths):
+    for q in queries:
+        qfeat = model.encode_text(q).cpu().numpy().astype("float32")
+        scores, indices = loaded.image_store.search(qfeat, top_n)
+        for s, i in zip(scores[0], indices[0]):
+            i_int = int(i)
+            if i_int < 0 or i_int >= len(loaded.image_paths):
                 continue
-            entry = candidates.get(ci_int)
-            if entry is None:
-                candidates[ci_int] = {"image": 0.0, "caption": float(s)}
-            else:
-                entry["caption"] = max(entry["caption"], float(s))
+            entry = candidates.setdefault(i_int, {"image": 0.0, "caption": 0.0})
+            if float(s) > entry["image"]:
+                entry["image"] = float(s)
+
+        if loaded.caption_store is not None:
+            cap_scores, cap_indices = loaded.caption_store.search(qfeat, top_n)
+            for s, ci in zip(cap_scores[0], cap_indices[0]):
+                ci_int = int(ci)
+                if ci_int < 0 or ci_int >= len(loaded.image_paths):
+                    continue
+                entry = candidates.setdefault(ci_int, {"image": 0.0, "caption": 0.0})
+                if float(s) > entry["caption"]:
+                    entry["caption"] = float(s)
 
     if not candidates:
         return []
@@ -152,7 +185,6 @@ def search(
         i: cfg.retrieval.image_weight * v["image"] + cfg.retrieval.caption_weight * v["caption"]
         for i, v in candidates.items()
     }
-
     rerank_scores: dict[int, float] = {}
     if cfg.retrieval.use_reranker and len(hybrid) > cfg.retrieval.top_k:
         top_idx = sorted(hybrid.keys(), key=lambda x: hybrid[x], reverse=True)[:top_n]
