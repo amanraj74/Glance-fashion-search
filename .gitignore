@@ -47,5 +47,18 @@ htmlcov/
 .mypy_cache/
 .ruff_cache/
 
+# Internal engineering docs (kept locally only, not for public review)
+AGENT.md
+TODO.md
+PROJECT_STATUS.md
+M1_PLAN.md
+CHANGELOG.md
+plan.md
+status.md
+
+# Debug / one-shot scripts from this session
+debug_pdf.py
+restore_pdf.py
+
 # Streamlit secrets
 .streamlit/secrets.toml

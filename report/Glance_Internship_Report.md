@@ -2,8 +2,8 @@
 ## Multimodal Fashion & Context Retrieval
 
 **Submission date:** July 2026
-**Repository:** `github.com/<your-username>/glance-fashion-search`
-**Author:** *Add your name here*
+**Repository:** [github.com/amanraj74/Glance-fashion-search](https://github.com/amanraj74/Glance-fashion-search)
+**Author:** Aman Jaiswal
 
 ---
 
@@ -279,7 +279,9 @@ A precision improvement roadmap:
 
 ## Appendix A. Codebase
 
-GitHub link: *to be filled in by the author*.
+**GitHub:** [github.com/amanraj74/Glance-fashion-search](https://github.com/amanraj74/Glance-fashion-search)
+
+The repository contains the full pipeline — indexer, retriever, scripts, Streamlit app, tests, and this writeup. Local reproduction instructions are in Appendix B below.
 
 ---
 
