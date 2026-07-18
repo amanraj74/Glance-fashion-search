@@ -1,0 +1,31 @@
+{
+  "slug": "04_casual_city",
+  "query": "Casual weekend outfit for a city walk.",
+  "results": [
+    {
+      "rank": 1,
+      "path": "dataset\\images\\8ec2cc47cc8ae60da6de3872a561a6af.jpg",
+      "score": 0.152740736616058
+    },
+    {
+      "rank": 2,
+      "path": "dataset\\images\\3423d1b381d437ad26011e628173bc63.jpg",
+      "score": 0.152740736616058
+    },
+    {
+      "rank": 3,
+      "path": "dataset\\images\\2907c60baee70f30b349de950935bdd4.jpg",
+      "score": 0.152740736616058
+    },
+    {
+      "rank": 4,
+      "path": "dataset\\images\\0c19eca5f90b66b915e2f6cbd421574f.jpg",
+      "score": 0.152740736616058
+    },
+    {
+      "rank": 5,
+      "path": "dataset\\images\\60b18000fbe38a3e0efc55e8ab5656da.jpg",
+      "score": 0.1523657715402989
+    }
+  ]
+}

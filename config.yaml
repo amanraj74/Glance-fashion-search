@@ -1,0 +1,37 @@
+model:
+  name: ViT-B-16-SigLIP-512
+  pretrained: webli
+  cache_dir: null
+  device: auto
+
+index:
+  image_dir: dataset/images
+  output_dir: output
+  index_path: output/faiss.index
+  metadata_path: output/metadata.json
+  caption_path: output/captions.json
+  caption_index_path: output/captions.index
+  backend: flat
+  ivf_nlist: 100
+  ivf_nprobe: 8
+
+retrieval:
+  top_k: 5
+  rerank_top_n: 50
+  caption_weight: 0.4
+  use_captions: true
+  use_reranker: true
+
+captions:
+  enabled: true
+  model: Salesforce/blip-image-captioning-base
+  batch_size: 16
+  max_new_tokens: 30
+  num_beams: 3
+
+rerank:
+  enabled: true
+  model: cross-encoder/ms-marco-MiniLM-L-2-v2
+  batch_size: 16
+
+log_level: INFO

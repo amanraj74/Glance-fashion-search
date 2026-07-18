@@ -1,0 +1,29 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "glance-search"
+version = "0.2.0"
+description = "Multimodal fashion + context retrieval (Glance ML Internship Assignment)"
+readme = "README.md"
+requires-python = ">=3.10"
+dependencies = [
+    "torch>=2.13.0",
+    "torchvision>=0.28.0",
+    "open_clip_torch>=3.3.0",
+    "transformers>=5.13.1",
+    "sentence-transformers>=5.6.0",
+    "accelerate>=1.14.0",
+    "faiss-cpu>=1.14.3",
+    "pillow>=12.3.0",
+    "numpy>=2.2.6",
+    "tqdm>=4.68.4",
+    "PyYAML>=6.0.3",
+]
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.setuptools.package-data]
+"glance_search" = ["py.typed"]

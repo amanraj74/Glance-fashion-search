@@ -1,0 +1,16 @@
+config,query_slug,query,top1_score,top5_mean_score,mean_image_score,mean_caption_score
+image_only,01_yellow_raincoat,A person in a bright yellow raincoat.,0.0883,0.0643,0.0643,0.2891
+image_only,02_business_office,Professional business attire inside a modern office.,0.0881,0.0821,0.0821,0.0
+image_only,03_blue_shirt_park,Someone wearing a blue shirt sitting on a park bench.,0.1085,0.0959,0.0959,0.3796
+image_only,04_casual_city,Casual weekend outfit for a city walk.,0.1015,0.0982,0.0982,0.0
+image_only,05_red_tie_white_shirt,A red tie and a white shirt in a formal setting.,0.0489,0.0423,0.0423,0.253
+image_captions,01_yellow_raincoat,A person in a bright yellow raincoat.,0.335,0.3175,0.0352,0.741
+image_captions,02_business_office,Professional business attire inside a modern office.,0.3485,0.3101,0.0141,0.7541
+image_captions,03_blue_shirt_park,Someone wearing a blue shirt sitting on a park bench.,0.321,0.3156,0.0816,0.6666
+image_captions,04_casual_city,Casual weekend outfit for a city walk.,0.3054,0.3053,0.0,0.7632
+image_captions,05_red_tie_white_shirt,A red tie and a white shirt in a formal setting.,0.3005,0.2781,0.026,0.6562
+image_captions_rerank,01_yellow_raincoat,A person in a bright yellow raincoat.,0.6596,0.3148,0.0313,0.7439
+image_captions_rerank,02_business_office,Professional business attire inside a modern office.,0.1743,0.1551,0.0141,0.7541
+image_captions_rerank,03_blue_shirt_park,Someone wearing a blue shirt sitting on a park bench.,0.6219,0.598,0.0361,0.6356
+image_captions_rerank,04_casual_city,Casual weekend outfit for a city walk.,0.1527,0.1527,0.0,0.7632
+image_captions_rerank,05_red_tie_white_shirt,A red tie and a white shirt in a formal setting.,0.3041,0.2142,0.0222,0.6421

@@ -1,0 +1,31 @@
+{
+  "slug": "05_red_tie_white_shirt",
+  "query": "A red tie and a white shirt in a formal setting.",
+  "results": [
+    {
+      "rank": 1,
+      "path": "dataset\\images\\004e9e21cd1aca568a8ffc77a54638ce.jpg",
+      "score": 0.3040720761959509
+    },
+    {
+      "rank": 2,
+      "path": "dataset\\images\\daf5e5c58d573f7b7d7d64ae30bdd4b5.jpg",
+      "score": 0.21375025254583307
+    },
+    {
+      "rank": 3,
+      "path": "dataset\\images\\d5b71be47a3d8306719674d0f76c31ea.jpg",
+      "score": 0.2074190021017785
+    },
+    {
+      "rank": 4,
+      "path": "dataset\\images\\64b13d18dea21a27301129ad62f7468f.jpg",
+      "score": 0.17599094741061888
+    },
+    {
+      "rank": 5,
+      "path": "dataset\\images\\280a76210b66ab30456070b315ac81e7.jpg",
+      "score": 0.16992194827661478
+    }
+  ]
+}

@@ -1,0 +1,31 @@
+{
+  "slug": "01_yellow_raincoat",
+  "query": "A person in a bright yellow raincoat.",
+  "results": [
+    {
+      "rank": 1,
+      "path": "dataset\\images\\e636280e96f3863157a4398c92fc299e.jpg",
+      "score": 0.6595937773039637
+    },
+    {
+      "rank": 2,
+      "path": "dataset\\images\\902bc083a355f8d15f5a53cba245135e.jpg",
+      "score": 0.440721682096037
+    },
+    {
+      "rank": 3,
+      "path": "dataset\\images\\1ae9cdebd762234889e60f2c0d07a768.jpg",
+      "score": 0.16272055570341135
+    },
+    {
+      "rank": 4,
+      "path": "dataset\\images\\d5420eb0d6e13003799778f0157b0a0e.jpg",
+      "score": 0.1556528419749868
+    },
+    {
+      "rank": 5,
+      "path": "dataset\\images\\729331a4d925fefce91c66918f4a14eb.jpg",
+      "score": 0.15539538641987183
+    }
+  ]
+}

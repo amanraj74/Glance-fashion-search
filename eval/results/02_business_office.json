@@ -1,0 +1,31 @@
+{
+  "slug": "02_business_office",
+  "query": "Professional business attire inside a modern office.",
+  "results": [
+    {
+      "rank": 1,
+      "path": "dataset\\images\\6fe199d9875bd01b8361d7f0d5d4c071.jpg",
+      "score": 0.17427225653146738
+    },
+    {
+      "rank": 2,
+      "path": "dataset\\images\\60b18000fbe38a3e0efc55e8ab5656da.jpg",
+      "score": 0.15197517873112626
+    },
+    {
+      "rank": 3,
+      "path": "dataset\\images\\5740836931d1263c1fa0dd3591a74eb7.jpg",
+      "score": 0.1513702094014687
+    },
+    {
+      "rank": 4,
+      "path": "dataset\\images\\faef680c9ba90bd6852e6bc759341896.jpg",
+      "score": 0.14885740150831772
+    },
+    {
+      "rank": 5,
+      "path": "dataset\\images\\f692add639067c1f3617c472f5d503c2.jpg",
+      "score": 0.14885740150831772
+    }
+  ]
+}
