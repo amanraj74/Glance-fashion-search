@@ -17,12 +17,17 @@ index:
 
 retrieval:
   top_k: 5
-  rerank_top_n: 100
-  caption_weight: 0.5
-  image_weight: 0.5
+  rerank_top_n: 150
+  rerank_weight: 0.35
+  caption_weight: 0.35
+  image_weight: 0.65
   use_captions: true
   use_reranker: true
   expand_queries: true
+  rerank_min_caption_chars: 12
+  scoring: rrf
+  rrf_k: 60
+  attribute_bonus: 0.20
 
 captions:
   enabled: true
