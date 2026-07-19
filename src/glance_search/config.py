@@ -55,12 +55,17 @@ class IndexConfig:
 @dataclass(frozen=True)
 class RetrievalConfig:
     top_k: int = 5
-    rerank_top_n: int = 100
-    caption_weight: float = 0.5
-    image_weight: float = 0.5
+    rerank_top_n: int = 150
+    rerank_weight: float = 0.35
+    caption_weight: float = 0.35
+    image_weight: float = 0.65
     use_captions: bool = True
     use_reranker: bool = True
     expand_queries: bool = True
+    rerank_min_caption_chars: int = 12
+    scoring: str = "rrf"
+    rrf_k: int = 60
+    attribute_bonus: float = 0.20
 
 
 @dataclass(frozen=True)

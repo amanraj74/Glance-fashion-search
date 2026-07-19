@@ -25,12 +25,18 @@ log = get_logger(__name__)
 def main() -> int:
     parser = argparse.ArgumentParser(description="Generate BLIP captions and embed them.")
     parser.add_argument("--dry-run", action="store_true", help="load config and exit (no model download)")
+    parser.add_argument("--force", action="store_true", help="regenerate captions for every image (skip cache)")
     args = parser.parse_args()
 
     cfg = load_config()
     if args.dry_run:
         print(f"dry-run ok: caption model={cfg.captions.model} output={cfg.caption_path_obj}")
         return 0
+    if args.force:
+        for p in (cfg.caption_path_obj, cfg.caption_path_obj.with_name(cfg.caption_path_obj.stem + "_multi.json")):
+            if p.exists():
+                p.unlink()
+        log.info("--force: cleared existing caption caches")
 
     configure_logging(cfg.log_level)
     try:

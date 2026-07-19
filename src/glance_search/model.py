@@ -29,11 +29,16 @@ class ClipModel:
     def __init__(self, cfg: ModelConfig):
         self.cfg = cfg
         self.device = _resolve_device(cfg.device)
+        is_hf_hub = cfg.name.startswith("hf-hub:")
+        pretrained_arg = None if is_hf_hub else cfg.pretrained
         try:
-            log.info("loading model name=%s pretrained=%s device=%s", cfg.name, cfg.pretrained, self.device)
+            log.info(
+                "loading model name=%s pretrained=%s device=%s",
+                cfg.name, pretrained_arg, self.device,
+            )
             model, _, preprocess = open_clip.create_model_and_transforms(
                 cfg.name,
-                pretrained=cfg.pretrained,
+                pretrained=pretrained_arg,
                 cache_dir=cfg.cache_dir,
             )
             tokenizer_name = cfg.name if "hf-hub:" not in cfg.name else cfg.name.split("/", 1)[1]

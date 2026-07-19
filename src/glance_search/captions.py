@@ -1,4 +1,11 @@
-"""BLIP image captioning. Offline, resumable, batched."""
+"""BLIP image captioning. Offline, resumable, batched, prompt-conditioned.
+
+For each image we generate up to N captions using different decoder prompts. This
+breaks the BLIP-base "default to \"a model walks the runway...\"\" pathology
+(observed on 40%+ of a fashion catalogue) by conditioning on style/attribute/scene
+prompts. Multiple captions also let downstream retrieval average several text
+embeddings per image, which improves compositional matching.
+"""
 
 from __future__ import annotations
 
@@ -17,6 +24,13 @@ from glance_search.logging_setup import get_logger
 log = get_logger(__name__)
 
 
+DEFAULT_PROMPTS: tuple[str, ...] = (
+    "",
+    "a photograph of clothing and accessories worn by a person,",
+    "a fashion product photo showing garments and their color,",
+)
+
+
 def _load_model(model_name: str):
     try:
         processor = BlipProcessor.from_pretrained(model_name)
@@ -26,33 +40,115 @@ def _load_model(model_name: str):
     return processor, model
 
 
+def _generate_batch(
+    processor,
+    model,
+    imgs: list[Image.Image],
+    prompts: tuple[str, ...],
+    max_new_tokens: int,
+    num_beams: int,
+    device: str,
+) -> list[list[str]]:
+    """Run BLIP on each image with each prompt. Returns [img][prompt] -> caption."""
+    if not imgs:
+        return []
+    captions_per_image: list[list[str]] = [[] for _ in imgs]
+    with torch.no_grad():
+        pixel = processor(images=imgs, return_tensors="pt").pixel_values.to(device)
+        for prompt in prompts:
+            if prompt:
+                tok = processor.tokenizer(
+                    [prompt] * len(imgs),
+                    padding=True,
+                    return_tensors="pt",
+                ).to(device)
+                input_ids = tok.input_ids
+                attention_mask = tok.attention_mask
+            else:
+                input_ids = None
+                attention_mask = None
+            out = model.generate(
+                pixel_values=pixel,
+                input_ids=input_ids,
+                attention_mask=attention_mask,
+                max_new_tokens=max_new_tokens,
+                num_beams=num_beams,
+            )
+            for i, o in enumerate(out):
+                text = processor.decode(o, skip_special_tokens=True).strip()
+                captions_per_image[i].append(text)
+    return captions_per_image
+
+
+def _join_captions(captions: list[str]) -> str:
+    """Deduplicate near-identical captions, keep order, join with '. '."""
+    seen: set[str] = set()
+    out: list[str] = []
+    for c in captions:
+        key = c.lower().strip(" .,!?:;'\"")
+        if not key or key in seen:
+            continue
+        seen.add(key)
+        out.append(c)
+    return ". ".join(out)
+
+
+def _serialize(captions_obj, version: int = 2) -> str:
+    return json.dumps({"version": version, "captions": captions_obj}, indent=2)
+
+
+def _deserialize(text: str) -> tuple[dict[str, list[str]], int]:
+    """Return ({path: [captions...]}, schema_version). Handles old + new shapes."""
+    raw = json.loads(text)
+    if isinstance(raw, dict) and "version" in raw and "captions" in raw:
+        return raw["captions"], int(raw["version"])
+    if isinstance(raw, dict):
+        return {k: [v] for k, v in raw.items()}, 1
+    return {}, 1
+
+
 def caption_corpus(
     image_paths: list[Path],
     cfg: CaptionsConfig,
     out_path: Path,
 ) -> dict[str, str]:
-    """Generate one BLIP caption per image. Resumable: existing entries are kept."""
+    """Generate one or more BLIP captions per image. Resumable.
+
+    Output is the ``primary`` caption (joined, deduplicated multi-prompt string) so
+    downstream code that reads ``captions.json`` keeps working. The per-prompt list
+    is preserved under the same key, separated by ``||`` markers, in a sibling
+    file ``captions_multi.json`` for callers that want all variants.
+    """
     out_path.parent.mkdir(parents=True, exist_ok=True)
-    captions: dict[str, str] = {}
+    captions: dict[str, list[str]] = {}
     if out_path.exists():
         try:
-            captions = json.loads(out_path.read_text(encoding="utf-8"))
+            captions, _ = _deserialize(out_path.read_text(encoding="utf-8"))
         except Exception:
             log.warning("could not read existing captions at %s; starting fresh", out_path)
 
-    missing = [p for p in image_paths if str(p) not in captions]
+    missing = [p for p in image_paths if str(p) not in captions or not captions[str(p)]]
     if not missing:
         log.info("all %d captions already cached at %s", len(image_paths), out_path)
-        return captions
+        joined = {p: _join_captions(cs) for p, cs in captions.items()}
+        _write_multi(captions, out_path)
+        return joined
 
     processor, model = _load_model(cfg.model)
     device = "cuda" if torch.cuda.is_available() else "cpu"
     model = model.to(device)
 
+    prompts = DEFAULT_PROMPTS
+    log.info(
+        "captioning %d images with %d prompts on %s (model=%s)",
+        len(missing), len(prompts), device, cfg.model,
+    )
+
+    flush_every = max(1, 10)
     for start in tqdm(range(0, len(missing), cfg.batch_size), desc="caption"):
         chunk = missing[start : start + cfg.batch_size]
-        imgs = []
-        good = []
+        imgs: list[Image.Image] = []
+        good: list[Path] = []
         for p in chunk:
             try:
                 imgs.append(Image.open(p).convert("RGB"))
@@ -62,24 +158,28 @@ def caption_corpus(
         if not good:
             continue
         try:
-            inputs = processor(images=imgs, return_tensors="pt").to(device)
-            with torch.no_grad():
-                out = model.generate(
-                    **inputs,
-                    max_new_tokens=cfg.max_new_tokens,
-                    num_beams=cfg.num_beams,
-                )
-            decoded = [processor.decode(o, skip_special_tokens=True) for o in out]
-            for p, text in zip(good, decoded):
-                captions[str(p)] = text.strip()
+            per_image = _generate_batch(
+                processor, model, imgs, prompts,
+                cfg.max_new_tokens, cfg.num_beams, device,
+            )
+            for p, cs in zip(good, per_image):
+                captions[str(p)] = [c for c in cs if c]
         except Exception as exc:
             log.warning("caption batch failed (size=%d): %s", len(good), exc)
             for p in good:
-                captions.setdefault(str(p), "")
+                captions.setdefault(str(p), [])
 
-        if (start // cfg.batch_size) % 10 == 0:
-            out_path.write_text(json.dumps(captions, indent=2), encoding="utf-8")
+        if (start // cfg.batch_size) % flush_every == 0:
+            _write_multi(captions, out_path)
 
-    out_path.write_text(json.dumps(captions, indent=2), encoding="utf-8")
-    log.info("wrote %d captions to %s", len(captions), out_path)
-    return captions
+    _write_multi(captions, out_path)
+    joined = {p: _join_captions(cs) for p, cs in captions.items() if cs}
+    out_path.write_text(json.dumps(joined, indent=2), encoding="utf-8")
+    log.info("wrote %d captions (multi-prompt) to %s", len(joined), out_path)
+    return joined
+
+
+def _write_multi(captions: dict[str, list[str]], out_path: Path) -> None:
+    """Write raw multi-caption cache next to the primary captions.json."""
+    multi_path = out_path.with_name(out_path.stem + "_multi.json")
+    multi_path.write_text(_serialize(captions), encoding="utf-8")
