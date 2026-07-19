@@ -1,22 +1,22 @@
 {
   "01_yellow_raincoat": {
     "query": "A person in a bright yellow raincoat.",
-    "top_score": 0.7455398387661276
+    "top_score": 0.3215687421722156
   },
   "02_business_office": {
     "query": "Professional business attire inside a modern office.",
-    "top_score": 0.32271596789360046
+    "top_score": 0.01070293470225948
   },
   "03_blue_shirt_park": {
     "query": "Someone wearing a blue shirt sitting on a park bench.",
-    "top_score": 0.7207269039405741
+    "top_score": 0.3121691452426676
   },
   "04_casual_city": {
     "query": "Casual weekend outfit for a city walk.",
-    "top_score": 0.34125983715057373
+    "top_score": 0.008479307679739985
   },
   "05_red_tie_white_shirt": {
     "query": "A red tie and a white shirt in a formal setting.",
-    "top_score": 0.386059641118522
+    "top_score": 0.10839605664569335
   }
 }

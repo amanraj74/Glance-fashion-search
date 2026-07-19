@@ -1,0 +1,16 @@
+config,query_slug,query,query_axes,n_results,top1_image_cosine,top1_caption_cosine,top1_score,score_gap,topk_diversity,score_entropy,margin_at_k
+image_only,01_yellow_raincoat,A person in a bright yellow raincoat.,color|garment,5,0.289,0.7248,0.0178,0.001,1.0,1.6094,0.0
+image_only,02_business_office,Professional business attire inside a modern office.,scene|style,5,0.2326,0.7057,0.0164,0.0018,1.0,1.6094,0.0
+image_only,03_blue_shirt_park,Someone wearing a blue shirt sitting on a park bench.,color|garment|scene,5,0.3197,0.7177,0.0169,0.001,1.0,1.6094,0.0
+image_only,04_casual_city,Casual weekend outfit for a city walk.,scene|style,5,0.2427,0.7042,0.013,0.0024,1.0,1.6094,0.0
+image_only,05_red_tie_white_shirt,A red tie and a white shirt in a formal setting.,color|garment|scene|style,5,0.2419,0.687,0.0177,0.0019,1.0,1.6094,0.0
+image_captions,01_yellow_raincoat,A person in a bright yellow raincoat.,color|garment,5,0.289,0.7248,0.0178,0.001,1.0,1.6094,0.0
+image_captions,02_business_office,Professional business attire inside a modern office.,scene|style,5,0.2326,0.7057,0.0164,0.0018,1.0,1.6094,0.0
+image_captions,03_blue_shirt_park,Someone wearing a blue shirt sitting on a park bench.,color|garment|scene,5,0.3197,0.7177,0.0169,0.001,1.0,1.6094,0.0
+image_captions,04_casual_city,Casual weekend outfit for a city walk.,scene|style,5,0.2427,0.7042,0.013,0.0024,1.0,1.6094,0.0
+image_captions,05_red_tie_white_shirt,A red tie and a white shirt in a formal setting.,color|garment|scene|style,5,0.2419,0.687,0.0177,0.0019,1.0,1.6094,0.0
+image_captions_rerank,01_yellow_raincoat,A person in a bright yellow raincoat.,color|garment,5,0.289,0.7248,0.3216,0.1761,1.0,1.6014,0.0
+image_captions_rerank,02_business_office,Professional business attire inside a modern office.,scene|style,5,0.2326,0.7057,0.0107,0.0012,1.0,1.6094,0.0
+image_captions_rerank,03_blue_shirt_park,Someone wearing a blue shirt sitting on a park bench.,color|garment|scene,5,0.1928,0.5851,0.3122,0.0898,1.0,1.6085,0.0
+image_captions_rerank,04_casual_city,Casual weekend outfit for a city walk.,scene|style,5,0.2427,0.7042,0.0085,0.0016,1.0,1.6094,0.0
+image_captions_rerank,05_red_tie_white_shirt,A red tie and a white shirt in a formal setting.,color|garment|scene|style,5,0.2419,0.687,0.1084,0.0455,1.0,1.609,0.0
