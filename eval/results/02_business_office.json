@@ -5,27 +5,27 @@
     {
       "rank": 1,
       "path": "dataset\\images\\6fe199d9875bd01b8361d7f0d5d4c071.jpg",
-      "score": 0.01070293470225948
+      "score": 0.008559619691334135
     },
     {
       "rank": 2,
-      "path": "dataset\\images\\fca7000d1b2db825d5b56db79b95c61c.jpg",
-      "score": 0.009514206565864821
+      "path": "dataset\\images\\cd0f34921f96592811ff3a3776fa0444.jpg",
+      "score": 0.008075158964161513
     },
     {
       "rank": 3,
-      "path": "dataset\\images\\620c445190aafb09a9f17acdca5585b3.jpg",
-      "score": 0.008357710189710248
+      "path": "dataset\\images\\025c44ff30ea619abd1b1bb2df58bb8b.jpg",
+      "score": 0.008048056942678291
     },
     {
       "rank": 4,
-      "path": "dataset\\images\\443afe5ce1fe775cd6f04c359e122f4b.jpg",
-      "score": 0.00811672325976231
+      "path": "dataset\\images\\e2ba4d1e422cc766d9e8eaacd3a25a3e.jpg",
+      "score": 0.007144565051218286
     },
     {
       "rank": 5,
-      "path": "dataset\\images\\f79f1d0fc8dfae388e8a1887623228ea.jpg",
-      "score": 0.008061701373281015
+      "path": "dataset\\images\\fca7000d1b2db825d5b56db79b95c61c.jpg",
+      "score": 0.006966164333109985
     }
   ]
 }
