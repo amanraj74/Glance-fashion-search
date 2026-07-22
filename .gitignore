@@ -24,6 +24,8 @@ output/metadata.json
 output/captions.json
 output/captions.index
 output/caption_meta.json
+output/captions_multi.json
+output/image_tags.json
 
 # IDE / OS
 .vscode/

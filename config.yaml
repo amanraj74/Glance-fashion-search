@@ -27,7 +27,9 @@ retrieval:
   rerank_min_caption_chars: 12
   scoring: rrf
   rrf_k: 60
-  attribute_bonus: 0.20
+  attribute_bonus: 0.30
+  hard_negative_penalty: 0.20
+  semantic_attribute_weight: 0.80
 
 captions:
   enabled: true

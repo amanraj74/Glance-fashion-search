@@ -65,7 +65,9 @@ class RetrievalConfig:
     rerank_min_caption_chars: int = 12
     scoring: str = "rrf"
     rrf_k: int = 60
-    attribute_bonus: float = 0.20
+    attribute_bonus: float = 0.30
+    hard_negative_penalty: float = 0.20
+    semantic_attribute_weight: float = 0.80
 
 
 @dataclass(frozen=True)

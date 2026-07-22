@@ -29,6 +29,11 @@ from glance_search.logging_setup import get_logger
 from glance_search.metrics import rrf as rrf_weight
 from glance_search.model import ClipModel
 from glance_search.reranker import rerank
+from glance_search.semantic_attributes import (
+    SemanticAttributeScores,
+    build_attribute_vectors,
+    semantic_attribute_score,
+)
 
 log = get_logger(__name__)
 
@@ -114,6 +119,7 @@ class SearchResult:
     image_rank: int | None = None
     caption_rank: int | None = None
     attribute_score: float | None = None
+    semantic_score: float | None = None
     query_axes: tuple[str, ...] = ()
 
 
@@ -123,6 +129,7 @@ class LoadedIndexes:
     image_paths: list[Path]
     caption_store: FaissStore | None
     captions: dict[str, str] = field(default_factory=dict)
+    image_tags: dict[str, dict[str, tuple[str, ...]]] = field(default_factory=dict)
 
 
 def build_image_index(cfg: Config) -> tuple[FaissStore, list[Path]]:
@@ -169,6 +176,7 @@ def load_indexes(cfg: Config) -> LoadedIndexes:
     img_store, img_paths = FaissStore.load(cfg.index_path_obj, cfg.metadata_path_obj, cfg.index)
     cap_store: FaissStore | None = None
     captions: dict[str, str] = {}
+    image_tags: dict[str, dict[str, tuple[str, ...]]] = {}
     if cfg.retrieval.use_captions and cfg.caption_index_path_obj.exists():
         meta = cfg.caption_index_path_obj.with_name("caption_meta.json")
         if meta.exists():
@@ -181,11 +189,19 @@ def load_indexes(cfg: Config) -> LoadedIndexes:
                 captions = json.loads(cfg.caption_path_obj.read_text(encoding="utf-8"))
             except Exception as exc:
                 log.warning("could not read captions cache: %s", exc)
+        tags_path = cfg.caption_path_obj.with_name("image_tags.json")
+        if tags_path.exists():
+            try:
+                from glance_search.image_attributes import load_image_attribute_cache
+                image_tags = load_image_attribute_cache(tags_path)
+            except Exception as exc:
+                log.warning("could not read image_tags cache: %s", exc)
     return LoadedIndexes(
         image_store=img_store,
         image_paths=img_paths,
         caption_store=cap_store,
         captions=captions,
+        image_tags=image_tags,
     )
 
 
@@ -316,12 +332,41 @@ def search(
         }
 
     attrs = parse_query(query)
-    if attr_bonus > 0 and attrs.total_hits > 0:
+    hard_neg_penalty = float(getattr(cfg.retrieval, "hard_negative_penalty", 0.0))
+    semantic_attr_weight = float(getattr(cfg.retrieval, "semantic_attribute_weight", 0.0))
+    composite_scores: dict[int, float] = {}
+    semantic_scores: dict[int, SemanticAttributeScores] = {}
+
+    if attrs.total_hits > 0 and loaded.image_tags:
+        from glance_search.image_attributes import composite_attribute_score
         for i in list(hybrid.keys()):
             cap = loaded.captions.get(str(loaded.image_paths[i]), "") or ""
-            ov = attribute_overlap_score(attrs, cap)
-            if ov > 0:
-                hybrid[i] = hybrid[i] * (1.0 + attr_bonus * ov)
+            cs, _per_axis = composite_attribute_score(
+                attrs, loaded.image_tags.get(str(loaded.image_paths[i]), {})
+            )
+            composite_scores[i] = cs
+            if cs < 0:
+                hybrid[i] = hybrid[i] * (1.0 + hard_neg_penalty * cs)
+            elif cs > 0:
+                hybrid[i] = hybrid[i] * (1.0 + attr_bonus * cs)
+            else:
+                ov = attribute_overlap_score(attrs, cap)
+                if ov > 0:
+                    hybrid[i] = hybrid[i] * (1.0 + 0.5 * attr_bonus * ov)
+
+    if semantic_attr_weight > 0 and attrs.total_hits > 0:
+        attr_vectors = build_attribute_vectors(attrs, model)
+        if attr_vectors:
+            try:
+                stored = loaded.image_store.reconstruct_n(0, len(loaded.image_paths))
+                stored_lookup = {idx: stored[idx] for idx in hybrid.keys()}
+            except Exception:
+                stored_lookup = {}
+            for i, vec in stored_lookup.items():
+                scores = semantic_attribute_score(vec, attr_vectors)
+                semantic_scores[i] = scores
+                if scores.overall != 0.0:
+                    hybrid[i] = hybrid[i] * (1.0 + semantic_attr_weight * scores.overall)
 
     rerank_scores: dict[int, float] = {}
     rerank_quality: dict[int, float] = {}
@@ -337,7 +382,7 @@ def search(
         for i in top_idx:
             cap = loaded.captions.get(str(loaded.image_paths[i]), "") or ""
             rerank_quality[i] = _caption_quality(cap)
-            attribute_scores[i] = attribute_overlap_score(attrs, cap) if attrs.total_hits else 0.0
+            attribute_scores[i] = composite_scores.get(i, attribute_overlap_score(attrs, cap) if attrs.total_hits else 0.0)
         final = {
             i: (1.0 - cfg.retrieval.rerank_weight) * hybrid[i]
                + cfg.retrieval.rerank_weight * rerank_quality.get(i, 1.0) * rerank_scores.get(i, hybrid[i])
@@ -345,12 +390,16 @@ def search(
         }
     else:
         final = hybrid
+        for i in final:
+            cap = loaded.captions.get(str(loaded.image_paths[i]), "") or ""
+            attribute_scores[i] = composite_scores.get(i, attribute_overlap_score(attrs, cap) if attrs.total_hits else 0.0)
 
     sorted_idx = sorted(final.keys(), key=lambda x: final[x], reverse=True)[: cfg.retrieval.top_k]
     results: list[SearchResult] = []
     for rank, i in enumerate(sorted_idx, start=1):
         path = loaded.image_paths[i]
         cap = loaded.captions.get(str(path))
+        sem = semantic_scores.get(i)
         results.append(
             SearchResult(
                 path=path,
@@ -366,6 +415,7 @@ def search(
                 attribute_score=attribute_scores.get(i)
                     if attribute_scores
                     else (attribute_overlap_score(attrs, cap) if attrs.total_hits else None),
+                semantic_score=(sem.overall if sem else None),
                 query_axes=tuple(query_axis_tags(attrs)),
             )
         )

@@ -26,9 +26,40 @@ log = get_logger(__name__)
 
 DEFAULT_PROMPTS: tuple[str, ...] = (
     "",
-    "a photograph of clothing and accessories worn by a person,",
-    "a fashion product photo showing garments and their color,",
+    "a fashion photo of a person wearing",
+    "the clothing in this image is",
 )
+
+
+def _is_repetitive(text: str) -> bool:
+    """Return True if ``text`` is degenerate (token repetition or too short).
+
+    BLIP-base sometimes loops on long prompts and emits "person, person, person"
+    or "catwalk catwalk catwalk". We reject those so they don't pollute the
+    caption index and confuse the reranker.
+    """
+    s = text.lower().strip(" .,!?:;'\"")
+    if not s or len(s) < 6:
+        return True
+    toks = s.split()
+    if len(toks) < 3:
+        return True
+    bigrams = [(toks[i], toks[i + 1]) for i in range(len(toks) - 1)]
+    bigram_counts = {}
+    for b in bigrams:
+        bigram_counts[b] = bigram_counts.get(b, 0) + 1
+    max_repeat = max(bigram_counts.values()) if bigram_counts else 0
+    if max_repeat >= max(3, len(toks) // 4):
+        return True
+    return False
+
+
+def _clean_caption(text: str) -> str:
+    text = text.strip()
+    text = " ".join(text.split())
+    if text and not text.endswith((".", "!", "?")):
+        text += "."
+    return text
 
 
 def _load_model(model_name: str):
@@ -76,7 +107,9 @@ def _generate_batch(
             )
             for i, o in enumerate(out):
                 text = processor.decode(o, skip_special_tokens=True).strip()
-                captions_per_image[i].append(text)
+                text = _clean_caption(text)
+                if text and not _is_repetitive(text):
+                    captions_per_image[i].append(text)
     return captions_per_image
 
 
